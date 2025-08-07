@@ -45,6 +45,19 @@
                         </div>
                         <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.gif" multiple>
                     </div>
+                    
+                    <!-- Upload Progress in Header -->
+                    <div class="upload-progress" id="uploadProgress">
+                        <div class="progress-header">
+                            <div class="progress-spinner"></div>
+                            <span class="progress-text" id="progressText">Caricamento in corso...</span>
+                        </div>
+                        <div class="progress-details" id="progressDetails">Preparazione file...</div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="progressBarFill"></div>
+                        </div>
+                        <div class="progress-percentage" id="progressPercentage">0%</div>
+                    </div>
                 </div>
             </div>
         </header>
@@ -114,14 +127,15 @@
         </footer>
     </div>
 
-    <!-- Loading overlay -->
-    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
-        <div class="loading-content">
-            <div class="loading-spinner"></div>
-            <h3>Caricamento in corso...</h3>
-            <p id="loadingText">Preparazione file...</p>
-            <div class="progress-bar">
-                <div class="progress-fill" id="progressFill"></div>
+    <!-- Custom Modal for confirmations -->
+    <div class="custom-modal" id="customModal">
+        <div class="modal-content">
+            <span class="modal-icon" id="modalIcon">🗑️</span>
+            <h3 class="modal-title" id="modalTitle">Conferma eliminazione</h3>
+            <p class="modal-message" id="modalMessage">Sei sicuro di voler eliminare questa immagine?</p>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" id="modalCancel">Annulla</button>
+                <button class="modal-btn modal-btn-primary" id="modalConfirm">Elimina</button>
             </div>
         </div>
     </div>

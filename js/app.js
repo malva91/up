@@ -246,9 +246,21 @@ class SyncGallery {
         this.uploadArea = document.getElementById('uploadArea');
         this.fileInput = document.getElementById('fileInput');
         this.imageCount = document.getElementById('imageCount');
-        this.loadingOverlay = document.getElementById('loadingOverlay');
-        this.loadingText = document.getElementById('loadingText');
-        this.progressFill = document.getElementById('progressFill');
+        
+        // Header upload progress elements
+        this.uploadProgress = document.getElementById('uploadProgress');
+        this.progressText = document.getElementById('progressText');
+        this.progressDetails = document.getElementById('progressDetails');
+        this.progressBarFill = document.getElementById('progressBarFill');
+        this.progressPercentage = document.getElementById('progressPercentage');
+        
+        // Custom modal elements
+        this.customModal = document.getElementById('customModal');
+        this.modalIcon = document.getElementById('modalIcon');
+        this.modalTitle = document.getElementById('modalTitle');
+        this.modalMessage = document.getElementById('modalMessage');
+        this.modalCancel = document.getElementById('modalCancel');
+        this.modalConfirm = document.getElementById('modalConfirm');
     }
 
     setupEventListeners() {
@@ -278,6 +290,14 @@ class SyncGallery {
 
         // Keyboard shortcuts
         document.addEventListener('keydown', this.handleKeyboard.bind(this));
+        
+        // Modal event listeners
+        this.modalCancel.addEventListener('click', () => this.hideModal());
+        this.customModal.addEventListener('click', (e) => {
+            if (e.target === this.customModal) {
+                this.hideModal();
+            }
+        });
     }
 
     setupUploadListeners() {
@@ -362,7 +382,7 @@ class SyncGallery {
         this.isUploading = true;
         // Pausa il polling durante l'upload per evitare conflitti
         this.stopPolling();
-        this.showLoadingOverlay();
+        this.showUploadProgress();
 
         try {
             // Compress images before upload
@@ -370,7 +390,7 @@ class SyncGallery {
             
             for (let i = 0; i < validFiles.length; i++) {
                 const file = validFiles[i];
-                this.updateLoadingProgress(
+                this.updateUploadProgress(
                     `Compressione ${i + 1} di ${validFiles.length}: ${file.name}`,
                     (i / validFiles.length) * 100
                 );
@@ -382,7 +402,7 @@ class SyncGallery {
             // Upload compressed files
             for (let i = 0; i < compressedFiles.length; i++) {
                 const file = compressedFiles[i];
-                this.updateLoadingProgress(
+                this.updateUploadProgress(
                     `Caricamento ${i + 1} di ${compressedFiles.length}: ${file.name}`,
                     50 + (i / compressedFiles.length) * 50
                 );
@@ -413,7 +433,7 @@ class SyncGallery {
             this.updateStatus('Errore durante il caricamento', 'error');
         } finally {
             this.isUploading = false;
-            this.hideLoadingOverlay();
+            this.hideUploadProgress();
             this.fileInput.value = '';
             // Riavvia il polling dopo l'upload
             this.startPolling();
@@ -437,19 +457,58 @@ class SyncGallery {
         return true;
     }
 
-    showLoadingOverlay() {
-        this.loadingOverlay.style.display = 'flex';
-        this.loadingOverlay.classList.add('fade-in');
+    showUploadProgress() {
+        this.uploadProgress.classList.add('show');
     }
 
-    hideLoadingOverlay() {
-        this.loadingOverlay.style.display = 'none';
-        this.loadingOverlay.classList.remove('fade-in');
+    hideUploadProgress() {
+        this.uploadProgress.classList.remove('show');
     }
 
-    updateLoadingProgress(text, percentage) {
-        this.loadingText.textContent = text;
-        this.progressFill.style.width = percentage + '%';
+    updateUploadProgress(text, percentage) {
+        this.progressDetails.textContent = text;
+        this.progressBarFill.style.width = percentage + '%';
+        this.progressPercentage.textContent = Math.round(percentage) + '%';
+        
+        // Update main progress text based on percentage
+        if (percentage < 50) {
+            this.progressText.textContent = 'Compressione immagini...';
+        } else if (percentage < 100) {
+            this.progressText.textContent = 'Caricamento in corso...';
+        } else {
+            this.progressText.textContent = 'Finalizzazione...';
+        }
+    }
+    
+    showModal(title, message, icon = '❓', confirmText = 'Conferma', cancelText = 'Annulla') {
+        return new Promise((resolve) => {
+            this.modalTitle.textContent = title;
+            this.modalMessage.textContent = message;
+            this.modalIcon.textContent = icon;
+            this.modalConfirm.textContent = confirmText;
+            this.modalCancel.textContent = cancelText;
+            
+            this.customModal.classList.add('show');
+            
+            const handleConfirm = () => {
+                this.hideModal();
+                this.modalConfirm.removeEventListener('click', handleConfirm);
+                resolve(true);
+            };
+            
+            const handleCancel = () => {
+                this.hideModal();
+                this.modalCancel.removeEventListener('click', handleCancel);
+                resolve(false);
+            };
+            
+            this.modalConfirm.addEventListener('click', handleConfirm);
+            this.modalCancel.addEventListener('click', handleCancel);
+        });
+    }
+    
+    hideModal() {
+        this.customModal.classList.remove('show');
     }
 
     async loadImages() {
@@ -518,12 +577,20 @@ class SyncGallery {
     }
 
     async deleteImageConfirm(image) {
-        if (confirm(`Sei sicuro di voler eliminare "${image.filename}"?`)) {
+        const confirmed = await this.showModal(
+            'Conferma eliminazione',
+            `Sei sicuro di voler eliminare "${image.filename}"?`,
+            '🗑️',
+            'Elimina',
+            'Annulla'
+        );
+        
+        if (confirmed) {
             try {
                 // Pausa il polling durante l'eliminazione
                 this.stopPolling();
-                this.showLoadingOverlay();
-                this.updateLoadingProgress('Eliminazione in corso...', 50);
+                this.showUploadProgress();
+                this.updateUploadProgress('Eliminazione in corso...', 50);
                 
                 const result = await deleteImage(image.id);
                 
@@ -531,7 +598,7 @@ class SyncGallery {
                     // If deleted image was selected, clear selection
                     if (this.currentState.selectedImage === image.filepath) {
                         this.currentState.selectedImage = '';
-                        this.syncState();
+                        await this.syncState();
                     }
                     
                     // Reload images
@@ -549,7 +616,7 @@ class SyncGallery {
                 console.error('Delete error:', error);
                 this.showNotification('Errore durante l\'eliminazione', 'error');
             } finally {
-                this.hideLoadingOverlay();
+                this.hideUploadProgress();
                 // Riavvia il polling dopo l'eliminazione
                 this.startPolling();
             }
@@ -873,18 +940,22 @@ class SyncGallery {
         }
 
         try {
+            this.updateSyncStatus('syncing');
             const result = await updateGalleryState(this.currentState);
 
             if (result.success) {
                 console.log('State synced successfully to Firebase');
                 this.updateSyncStatus('success');
+                return { success: true };
             } else {
                 console.error('Firebase sync error:', result.error);
                 this.updateSyncStatus('error');
+                return { success: false, error: result.error };
             }
         } catch (error) {
             console.error('Network error:', error);
             this.updateSyncStatus('error');
+            return { success: false, error: error.message };
         }
         console.log('=== syncState END ===');
     }
