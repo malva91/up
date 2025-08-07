@@ -1,7 +1,7 @@
 // firebase.js
 // ------------------------------------------------------------
-// Stand-alone ES-Module: browser-ready, no bundler required.
-// Provides a tiny API for a Realtime-DB-backed image gallery.
+// Firebase module for state synchronization only.
+// Image upload/management is handled by PHP backend.
 // ------------------------------------------------------------
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
@@ -15,12 +15,6 @@ import {
   serverTimestamp,
   goOnline
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
-import {
-  getStorage,
-  ref as storageRef,
-  uploadBytes,
-  getDownloadURL
-} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 
 // ------------------------------------------------------------
 // Firebase configuration (replace only if your keys differ).
@@ -42,7 +36,6 @@ const firebaseConfig = {
 // ------------------------------------------------------------
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
-const storage  = getStorage(app);
 
 goOnline(database); // explicit network enable
 console.info('🔥 Firebase initialised');
@@ -51,7 +44,6 @@ console.info('🔥 Firebase initialised');
 // Database references
 // ------------------------------------------------------------
 const stateRef  = ref(database, 'gallery/state');
-const imagesRef = ref(database, 'gallery/images');
 
 // ------------------------------------------------------------
 // Helper functions (public API)
@@ -72,41 +64,76 @@ async function updateGalleryState(state) {
 }
 
 /**
- * Add a new image record to Realtime Database.
- * @param {Object} imageData Arbitrary metadata (e.g. caption, userId).
+ * Upload images to PHP backend
+ * @param {FileList} files Files to upload
  */
-async function addImage(imageData) {
+async function uploadImages(files) {
   try {
-    const newImageRef = push(imagesRef);
-    await set(newImageRef, { ...imageData, uploadTime: serverTimestamp() });
-    return { success: true, id: newImageRef.key };
+    const formData = new FormData();
+    
+    // Add all files to FormData
+    for (let i = 0; i < files.length; i++) {
+      formData.append('images[]', files[i]);
+    }
+    
+    const response = await fetch('./api/upload.php', {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    return result;
   } catch (err) {
-    console.error('Error adding image:', err);
+    console.error('Error uploading images:', err);
     return { success: false, error: err.message };
   }
 }
 
 /**
- * Upload a File/Blob to Cloud Storage and return its public URL.
- * @param {File|Blob} file File to upload.
+ * Fetch all images from PHP backend
  */
-async function uploadImageToStorage(file) {
+async function fetchImages() {
   try {
-    const timestamp = Date.now();
-    const filename  = `${timestamp}_${file.name}`;
-    const imageRef  = storageRef(storage, `images/${filename}`);
-
-    const snapshot    = await uploadBytes(imageRef, file);
-    const downloadURL = await getDownloadURL(snapshot.ref);
-
-    return {
-      success: true,
-      filename: file.name,
-      filepath: downloadURL,
-      storagePath: snapshot.ref.fullPath
-    };
+    const response = await fetch('./api/images.php');
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    return result;
   } catch (err) {
-    console.error('Error uploading image:', err);
+    console.error('Error fetching images:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Delete an image from PHP backend
+ * @param {string} imageId Image ID to delete
+ */
+async function deleteImage(imageId) {
+  try {
+    const response = await fetch('./api/delete.php', {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ id: imageId })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    return result;
+  } catch (err) {
+    console.error('Error deleting image:', err);
     return { success: false, error: err.message };
   }
 }
@@ -140,7 +167,6 @@ async function initializeDefaultState() {
 export {
   // raw Firebase services
   database,
-  storage,
   ref,
   set,
   get,
@@ -150,11 +176,11 @@ export {
 
   // common references
   stateRef,
-  imagesRef,
 
   // helper API
   updateGalleryState,
-  addImage,
-  uploadImageToStorage,
+  uploadImages,
+  fetchImages,
+  deleteImage,
   initializeDefaultState
 };

@@ -1,5 +1,5 @@
 import {
-    database, stateRef, imagesRef, updateGalleryState, addImage, initializeDefaultState, ref, onValue, get, uploadImageToStorage,
+    database, stateRef, updateGalleryState, uploadImages, fetchImages, deleteImage, initializeDefaultState, ref, onValue, get,
     } from './firebase.js';
 
 class SyncGallery {
@@ -18,7 +18,6 @@ class SyncGallery {
         this.hasImageLoaded = false;
         this.isSyncing = false;
         this.stateListener = null;
-        this.imagesListener = null;
         this.isInitialized = false;
 
         this.init();
@@ -41,7 +40,6 @@ class SyncGallery {
 
             // Setup real-time listeners
             this.setupStateListener();
-            this.setupImagesListener();
 
             // Load initial data
             await this.loadImages();
@@ -70,27 +68,6 @@ class SyncGallery {
         }, (error) => {
             console.error('Firebase state listener error:', error);
             this.updateSyncStatus('error');
-        });
-    }
-
-    setupImagesListener() {
-        console.log('🔥 Setting up Firebase images listener');
-
-        this.imagesListener = onValue(imagesRef, (snapshot) => {
-            if (!this.isInitialized) return;
-
-            const data = snapshot.val();
-            const images = data ? Object.entries(data).map(([id, image]) => ({
-                id,
-                ...image
-            })) : [];
-
-            console.log('🔥 Firebase images update received:', images.length, 'images');
-            this.images = images.sort((a, b) => (b.uploadTime || 0) - (a.uploadTime || 0));
-            this.renderThumbnails();
-            this.updateImageCount();
-        }, (error) => {
-            console.error('Firebase images listener error:', error);
         });
     }
 
@@ -219,25 +196,24 @@ class SyncGallery {
                     `Caricamento ${i + 1} di ${validFiles.length}: ${file.name}`,
                     (i / validFiles.length) * 100
                 );
-
-                // Upload to Firebase Storage
-                const uploadResult = await uploadImageToStorage(file);
-
-                if (uploadResult.success) {
-                    // Add to Firebase Database
-                    await addImage({
-                        filename: uploadResult.filename,
-                        filepath: uploadResult.filepath,
-                        storageRef: uploadResult.storageRef
-                    });
-                } else {
-                    throw new Error(uploadResult.error);
-                }
-
-                await new Promise(resolve => setTimeout(resolve, 500));
             }
+            
+            // Upload all files to PHP backend
+            const uploadResult = await uploadImages(validFiles);
+            
+            if (!uploadResult.success) {
+                throw new Error(uploadResult.error || 'Errore durante il caricamento');
+            }
+            
+            // Reload images after successful upload
+            await this.loadImages();
 
             this.updateStatus(`${validFiles.length} immagini caricate con successo`, 'success');
+            
+            if (uploadResult.errors && uploadResult.errors.length > 0) {
+                console.warn('Upload warnings:', uploadResult.errors);
+                this.showNotification(`Caricati ${uploadResult.uploaded} file. Alcuni errori: ${uploadResult.errors.join(', ')}`, 'warning');
+            }
 
         } catch (error) {
             console.error('Upload error:', error);
@@ -283,15 +259,14 @@ class SyncGallery {
 
     async loadImages() {
         try {
-            const snapshot = await get(imagesRef);
-            const data = snapshot.val();
-
-            this.images = data ? Object.entries(data).map(([id, image]) => ({
-                id,
-                ...image
-            })) : [];
-
-            this.images.sort((a, b) => (b.uploadTime || 0) - (a.uploadTime || 0));
+            const result = await fetchImages();
+            
+            if (result.success) {
+                this.images = result.images || [];
+            } else {
+                throw new Error(result.error || 'Errore nel caricamento immagini');
+            }
+            
             this.renderThumbnails();
             this.updateImageCount();
 
@@ -323,12 +298,55 @@ class SyncGallery {
                 this.selectImage(image.filepath);
                 this.addThumbnailClickEffect(thumb);
             });
+            
+            // Add delete button for each thumbnail
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'thumbnail-delete';
+            deleteBtn.innerHTML = '🗑️';
+            deleteBtn.title = 'Elimina immagine';
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.deleteImageConfirm(image);
+            });
+            
+            thumb.appendChild(deleteBtn);
 
             thumb.style.animationDelay = `${index * 0.1}s`;
             thumb.classList.add('slide-up');
 
             this.thumbnailsContainer.appendChild(thumb);
         });
+    }
+
+    async deleteImageConfirm(image) {
+        if (confirm(`Sei sicuro di voler eliminare "${image.filename}"?`)) {
+            try {
+                this.showLoadingOverlay();
+                this.updateLoadingProgress('Eliminazione in corso...', 50);
+                
+                const result = await deleteImage(image.id);
+                
+                if (result.success) {
+                    // If deleted image was selected, clear selection
+                    if (this.currentState.selectedImage === image.filepath) {
+                        this.currentState.selectedImage = '';
+                        this.syncState();
+                    }
+                    
+                    // Reload images
+                    await this.loadImages();
+                    this.showNotification('Immagine eliminata con successo', 'success');
+                } else {
+                    throw new Error(result.error || 'Errore durante l\'eliminazione');
+                }
+                
+            } catch (error) {
+                console.error('Delete error:', error);
+                this.showNotification('Errore durante l\'eliminazione', 'error');
+            } finally {
+                this.hideLoadingOverlay();
+            }
+        }
     }
 
     addThumbnailClickEffect(thumbnail) {
@@ -761,9 +779,6 @@ class SyncGallery {
         // Remove Firebase listeners
         if (this.stateListener) {
             this.stateListener();
-        }
-        if (this.imagesListener) {
-            this.imagesListener();
         }
 
         // Remove DOM event listeners
