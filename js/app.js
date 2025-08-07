@@ -104,6 +104,11 @@ class SyncGallery {
     }
     
     async checkForUpdates() {
+        // Non fare controlli se stiamo caricando
+        if (this.isUploading) {
+            return;
+        }
+        
         try {
             // Check Firebase state
             const stateSnapshot = await get(stateRef);
@@ -129,7 +134,10 @@ class SyncGallery {
             
         } catch (error) {
             console.error('Polling check error:', error);
-            this.updateSyncIndicator('firebase', 'error');
+            // Solo mostra errore se non stiamo caricando
+            if (!this.isUploading) {
+                this.updateSyncIndicator('firebase', 'error');
+            }
         }
     }
     
@@ -140,7 +148,6 @@ class SyncGallery {
     }
     
     renderSyncStatus() {
-        const syncStatusElement = this.syncStatus;
         const firebaseStatus = this.syncStatus.firebase;
         const imagesStatus = this.syncStatus.images;
         
@@ -148,7 +155,10 @@ class SyncGallery {
         let statusText = '';
         let statusColor = '';
         
-        if (firebaseStatus === 'connected' && imagesStatus === 'synced') {
+        if (this.isUploading) {
+            statusText = '📤 Caricamento in corso...';
+            statusColor = 'var(--warning-color)';
+        } else if (firebaseStatus === 'connected' && imagesStatus === 'synced') {
             statusText = '🔥 Tutto sincronizzato';
             statusColor = 'var(--success-color)';
         } else if (firebaseStatus === 'connecting' || imagesStatus === 'checking') {
@@ -168,6 +178,13 @@ class SyncGallery {
         // Update detailed status in status bar
         const detailedStatus = document.getElementById('detailedSyncStatus');
         if (detailedStatus) {
+            if (this.isUploading) {
+                detailedStatus.innerHTML = `
+                    <span style="color: var(--warning-color)">📤 Upload in corso...</span>
+                `;
+                return;
+            }
+            
             detailedStatus.innerHTML = `
                 Firebase: <span style="color: ${firebaseStatus === 'connected' ? 'var(--success-color)' : 'var(--error-color)'}">
                     ${firebaseStatus === 'connected' ? '✅' : '❌'}
@@ -343,6 +360,8 @@ class SyncGallery {
         if (validFiles.length === 0) return;
 
         this.isUploading = true;
+        // Pausa il polling durante l'upload per evitare conflitti
+        this.stopPolling();
         this.showLoadingOverlay();
 
         try {
@@ -396,6 +415,8 @@ class SyncGallery {
             this.isUploading = false;
             this.hideLoadingOverlay();
             this.fileInput.value = '';
+            // Riavvia il polling dopo l'upload
+            this.startPolling();
         }
     }
 
@@ -499,6 +520,8 @@ class SyncGallery {
     async deleteImageConfirm(image) {
         if (confirm(`Sei sicuro di voler eliminare "${image.filename}"?`)) {
             try {
+                // Pausa il polling durante l'eliminazione
+                this.stopPolling();
                 this.showLoadingOverlay();
                 this.updateLoadingProgress('Eliminazione in corso...', 50);
                 
@@ -527,6 +550,8 @@ class SyncGallery {
                 this.showNotification('Errore durante l\'eliminazione', 'error');
             } finally {
                 this.hideLoadingOverlay();
+                // Riavvia il polling dopo l'eliminazione
+                this.startPolling();
             }
         }
     }
@@ -840,6 +865,12 @@ class SyncGallery {
     async syncState() {
         console.log('=== syncState START ===');
         console.log('Syncing state to Firebase:', JSON.stringify(this.currentState));
+
+        // Non sincronizzare durante l'upload per evitare conflitti
+        if (this.isUploading) {
+            console.log('Skipping sync during upload');
+            return;
+        }
 
         try {
             const result = await updateGalleryState(this.currentState);
