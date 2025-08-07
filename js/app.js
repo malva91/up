@@ -1,5 +1,5 @@
 import {
-    database, stateRef, imagesRef, updateGalleryState, addImage, initializeDefaultState, ref, onValue, uploadImageToStorage,
+    database, stateRef, imagesRef, updateGalleryState, addImage, initializeDefaultState, ref, onValue, get, uploadImageToStorage,
     } from './firebase.js';
 
 class SyncGallery {
