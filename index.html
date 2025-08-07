@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galleria Sincronizzata</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖼️</text></svg>">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header con upload -->
+        <header class="header">
+            <div class="header-content">
+                <div class="app-title">
+                    <span class="title-icon">🖼️</span>
+                    Galleria Sincronizzata
+                </div>
+                
+                <!-- Color Palette in Header -->
+                <div class="header-color-palette">
+                    <div class="palette-label">
+                        <span>🎨</span>
+                        Chroma Key
+                    </div>
+                    <div class="color-grid">
+                        <div class="color-option" data-color="#00ff00" title="Verde Brillante (Chroma Key)"></div>
+                        <div class="color-option" data-color="#ff00ff" title="Magenta"></div>
+                        <div class="color-option active" data-color="#0000ff" title="Blu"></div>
+                        <div class="color-option" data-color="#ff0000" title="Rosso"></div>
+                        <div class="color-option" data-color="#00ffff" title="Ciano"></div>
+                        <div class="color-option" data-color="#ffff00" title="Giallo"></div>
+                        <div class="color-option" data-color="#ffffff" title="Bianco"></div>
+                        <div class="color-option" data-color="#000000" title="Nero"></div>
+                        <div class="color-option" data-color="#808080" title="Grigio"></div>
+                    </div>
+                </div>
+                
+                <div class="upload-zone" id="uploadArea">
+                    <div class="upload-content">
+                        <div class="upload-icon">📁</div>
+                        <div class="upload-text">
+                            <span class="upload-primary">Trascina qui le immagini</span>
+                            <span class="upload-secondary">o <span class="upload-link">clicca per selezionare</span></span>
+                        </div>
+                        <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.gif" multiple>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main content -->
+        <main class="main-content">
+            <!-- Controls Panel -->
+            <div class="controls-panel">
+                <div class="controls-grid">
+                    <button class="control-btn" id="zoomOut" title="Zoom Out">
+                        <span>🔍-</span>
+                    </button>
+                    <div class="zoom-display" id="zoomInfo">100%</div>
+                    <button class="control-btn" id="zoomIn" title="Zoom In">
+                        <span>🔍+</span>
+                    </button>
+                    <button class="control-btn reset-btn" id="resetView" title="Reset Vista">
+                        <span>🔄</span> Reset Vista
+                    </button>
+                </div>
+            </div>
+
+            <!-- Fixed Image Viewer -->
+            <div class="image-viewer" id="imageViewer">
+                <div class="image-container" id="imageContainer">
+                    <img id="currentImage" src="" alt="" style="display: none;">
+                    <div class="no-image-state" id="noImage">
+                        <div class="no-image-icon">🖼️</div>
+                        <h3>Nessuna immagine selezionata</h3>
+                        <p>Carica delle immagini per iniziare</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Thumbnails section -->
+            <div class="thumbnails-section">
+                <div class="section-header">
+                    <h3 class="section-title">
+                        <span class="section-icon">📷</span>
+                        Immagini Caricate
+                        <span class="image-count" id="imageCount">0</span>
+                    </h3>
+                </div>
+                <div class="thumbnails-wrapper">
+                    <div class="thumbnails-container" id="thumbnailsContainer">
+                        <div class="empty-gallery">
+                            <div class="empty-icon">📸</div>
+                            <p>Nessuna immagine caricata</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Status bar -->
+        <footer class="status-bar">
+            <div class="status-left">
+                <span class="status-indicator" id="statusIndicator">●</span>
+                <span id="statusText">Inizializzazione...</span>
+            </div>
+            <div class="status-right">
+                <span id="syncStatus" class="sync-status">🔥 Connessione Firebase...</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <h3>Caricamento in corso...</h3>
+            <p id="loadingText">Preparazione file...</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./js/app.js"></script>
+
+</body>
+</html>
