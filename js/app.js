@@ -49,6 +49,10 @@ class SyncGallery {
 
     async initializeFirebase() {
         try {
+            console.log('🔥 [INIT] Initializing Firebase...');
+            this.updateSyncIndicator('firebase', 'connecting');
+            this.updateSyncIndicator('images', 'checking');
+            
             // Initialize default state
             await initializeDefaultState();
 
@@ -61,13 +65,13 @@ class SyncGallery {
             // Start polling system
             this.startPolling();
 
-            this.updateSyncStatus('success');
+            this.updateSyncIndicator('firebase', 'connected');
             this.isInitialized = true;
 
         } catch (error) {
             console.error('Firebase initialization error:', error);
-            this.updateStatus('Errore connessione Firebase', 'error');
-            this.updateSyncStatus('error');
+            this.updateSyncIndicator('firebase', 'error');
+            this.updateSyncIndicator('firebase', 'error');
         }
     }
 
@@ -93,6 +97,9 @@ class SyncGallery {
         this.pollingInterval = setInterval(async () => {
             await this.checkForUpdates();
         }, this.syncCheckInterval);
+        
+        // Set initial firebase status as connected since polling started
+        this.updateSyncIndicator('firebase', 'connected');
     }
     
     stopPolling() {
@@ -151,6 +158,8 @@ class SyncGallery {
     updateSyncIndicator(type, status) {
         this.syncStatus[type] = status;
         this.syncStatus.lastUpdate = new Date().toLocaleTimeString();
+        console.log('🔄 [UPDATE_SYNC_INDICATOR] Updated', type, 'to', status);
+        console.log('🔄 [UPDATE_SYNC_INDICATOR] Full syncStatus:', this.syncStatus);
         this.renderSyncStatus();
     }
     
@@ -159,8 +168,8 @@ class SyncGallery {
         console.log('🔄 [RENDER_SYNC] Current sync status:', this.syncStatus);
         console.log('🔄 [RENDER_SYNC] isUploading:', this.isUploading);
         
-        const firebaseStatus = this.syncStatus.firebase;
-        const imagesStatus = this.syncStatus.images;
+        const firebaseStatus = this.syncStatus.firebase || 'connecting';
+        const imagesStatus = this.syncStatus.images || 'checking';
         
         console.log('🔄 [RENDER_SYNC] Firebase status:', firebaseStatus, 'Images status:', imagesStatus);
         
@@ -180,10 +189,14 @@ class SyncGallery {
             statusText = '🔄 Controllo sincronizzazione...';
             statusColor = 'var(--primary-color)';
             console.log('🔄 [RENDER_SYNC] Checking sync status');
-        } else {
+        } else if (firebaseStatus === 'error' || imagesStatus === 'error') {
             statusText = '❌ Errore sincronizzazione';
             statusColor = 'var(--error-color)';
             console.log('🔄 [RENDER_SYNC] Error sync status');
+        } else {
+            statusText = '🔄 Sincronizzazione...';
+            statusColor = 'var(--primary-color)';
+            console.log('🔄 [RENDER_SYNC] Default sync status');
         }
         
         const syncElement = document.getElementById('syncStatus');
@@ -258,7 +271,7 @@ class SyncGallery {
             this.updateView();
             this.isSyncing = false;
             console.log('🔥 [STATE_UPDATE] updateView completed, updating sync status...');
-            this.updateSyncStatus('success');
+            this.updateSyncIndicator('firebase', 'connected');
         } else {
             console.log('🔥 [STATE_UPDATE] Not applying state - stateChanged:', stateChanged, 'isDragging:', this.isDragging);
         }
@@ -1103,58 +1116,29 @@ class SyncGallery {
 
         try {
             console.log('🔥 [SYNC_STATE] Updating sync status to syncing...');
-            this.updateSyncStatus('syncing');
+            this.updateSyncIndicator('firebase', 'syncing');
             console.log('🔥 [SYNC_STATE] Calling updateGalleryState...');
             const result = await updateGalleryState(this.currentState);
             console.log('🔥 [SYNC_STATE] updateGalleryState result:', result);
 
             if (result.success) {
                 console.log('🔥 [SYNC_STATE] State synced successfully to Firebase');
-                this.updateSyncStatus('success');
+                this.updateSyncIndicator('firebase', 'connected');
                 return { success: true };
             } else {
                 console.error('🔥 [SYNC_STATE] Firebase sync error:', result.error);
-                this.updateSyncStatus('error');
+                this.updateSyncIndicator('firebase', 'error');
                 return { success: false, error: result.error };
             }
         } catch (error) {
             console.error('🔥 [SYNC_STATE] Network error:', error);
             console.error('🔥 [SYNC_STATE] Error stack:', error.stack);
-            this.updateSyncStatus('error');
+            this.updateSyncIndicator('firebase', 'error');
             return { success: false, error: error.message };
         }
         console.log('🔥 [SYNC_STATE] === syncState END ===');
     }
 
-    updateSyncStatus(status) {
-        console.log('🔄 [SYNC_STATUS] updateSyncStatus called with:', status);
-        const syncStatus = this.syncStatus;
-        
-        if (!syncStatus) {
-            console.error('🔄 [SYNC_STATUS] syncStatus element not found!');
-            return;
-        }
-
-        switch (status) {
-            case 'success':
-                console.log('🔄 [SYNC_STATUS] Setting success status');
-                syncStatus.textContent = '🔥 Firebase Sync';
-                syncStatus.style.color = 'var(--success-color)';
-                break;
-            case 'error':
-                console.log('🔄 [SYNC_STATUS] Setting error status');
-                syncStatus.textContent = '❌ Errore sync';
-                syncStatus.style.color = 'var(--error-color)';
-                break;
-            case 'syncing':
-                console.log('🔄 [SYNC_STATUS] Setting syncing status');
-                syncStatus.textContent = '🔄 Sincronizzazione...';
-                syncStatus.style.color = 'var(--primary-color)';
-                break;
-            default:
-                console.warn('🔄 [SYNC_STATUS] Unknown status:', status);
-        }
-    }
 
     updateStatus(message, type = 'info') {
         this.statusText.textContent = message;
