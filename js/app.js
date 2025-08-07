@@ -106,34 +106,41 @@ class SyncGallery {
     async checkForUpdates() {
         // Non fare controlli se stiamo caricando
         if (this.isUploading) {
+            console.log('🔄 [POLLING] Skipping check - upload in progress');
             return;
         }
         
         try {
+            console.log('🔄 [POLLING] Checking for updates...');
             // Check Firebase state
             const stateSnapshot = await get(stateRef);
             const currentFirebaseState = stateSnapshot.val();
+            console.log('🔄 [POLLING] Current Firebase state:', currentFirebaseState);
             
             if (currentFirebaseState) {
                 // Check if images version changed
                 if (currentFirebaseState.imagesVersion && 
                     currentFirebaseState.imagesVersion !== this.lastKnownImagesVersion) {
-                    console.log('📸 Images version changed, reloading...', 
+                    console.log('🔄 [POLLING] Images version changed, reloading...', 
                         this.lastKnownImagesVersion, '->', currentFirebaseState.imagesVersion);
                     
+                    console.log('🔄 [POLLING] Calling loadImages from polling...');
                     await this.loadImages();
                     this.lastKnownImagesVersion = currentFirebaseState.imagesVersion;
                     this.updateSyncIndicator('images', 'synced');
+                    console.log('🔄 [POLLING] Images reloaded successfully');
                 }
                 
                 this.updateSyncIndicator('firebase', 'connected');
                 this.lastSyncTime = Date.now();
             } else {
+                console.warn('🔄 [POLLING] No Firebase state found');
                 this.updateSyncIndicator('firebase', 'error');
             }
             
         } catch (error) {
-            console.error('Polling check error:', error);
+            console.error('🔄 [POLLING] Polling check error:', error);
+            console.error('🔄 [POLLING] Error stack:', error.stack);
             // Solo mostra errore se non stiamo caricando
             if (!this.isUploading) {
                 this.updateSyncIndicator('firebase', 'error');
@@ -148,8 +155,14 @@ class SyncGallery {
     }
     
     renderSyncStatus() {
+        console.log('🔄 [RENDER_SYNC] renderSyncStatus called');
+        console.log('🔄 [RENDER_SYNC] Current sync status:', this.syncStatus);
+        console.log('🔄 [RENDER_SYNC] isUploading:', this.isUploading);
+        
         const firebaseStatus = this.syncStatus.firebase;
         const imagesStatus = this.syncStatus.images;
+        
+        console.log('🔄 [RENDER_SYNC] Firebase status:', firebaseStatus, 'Images status:', imagesStatus);
         
         // Update main sync status
         let statusText = '';
@@ -158,33 +171,42 @@ class SyncGallery {
         if (this.isUploading) {
             statusText = '📤 Caricamento in corso...';
             statusColor = 'var(--warning-color)';
+            console.log('🔄 [RENDER_SYNC] Upload in progress status');
         } else if (firebaseStatus === 'connected' && imagesStatus === 'synced') {
             statusText = '🔥 Tutto sincronizzato';
             statusColor = 'var(--success-color)';
+            console.log('🔄 [RENDER_SYNC] All synced status');
         } else if (firebaseStatus === 'connecting' || imagesStatus === 'checking') {
             statusText = '🔄 Controllo sincronizzazione...';
             statusColor = 'var(--primary-color)';
+            console.log('🔄 [RENDER_SYNC] Checking sync status');
         } else {
             statusText = '❌ Errore sincronizzazione';
             statusColor = 'var(--error-color)';
+            console.log('🔄 [RENDER_SYNC] Error sync status');
         }
         
         const syncElement = document.getElementById('syncStatus');
         if (syncElement) {
+            console.log('🔄 [RENDER_SYNC] Updating sync element with:', statusText);
             syncElement.textContent = statusText;
             syncElement.style.color = statusColor;
+        } else {
+            console.error('🔄 [RENDER_SYNC] syncStatus element not found in DOM!');
         }
         
         // Update detailed status in status bar
         const detailedStatus = document.getElementById('detailedSyncStatus');
         if (detailedStatus) {
             if (this.isUploading) {
+                console.log('🔄 [RENDER_SYNC] Updating detailed status for upload');
                 detailedStatus.innerHTML = `
                     <span style="color: var(--warning-color)">📤 Upload in corso...</span>
                 `;
                 return;
             }
             
+            console.log('🔄 [RENDER_SYNC] Updating detailed status for normal operation');
             detailedStatus.innerHTML = `
                 Firebase: <span style="color: ${firebaseStatus === 'connected' ? 'var(--success-color)' : 'var(--error-color)'}">
                     ${firebaseStatus === 'connected' ? '✅' : '❌'}
@@ -194,13 +216,18 @@ class SyncGallery {
                 </span> | 
                 Ultimo: ${this.syncStatus.lastUpdate || 'mai'}
             `;
+        } else {
+            console.error('🔄 [RENDER_SYNC] detailedSyncStatus element not found in DOM!');
         }
     }
 
     handleStateUpdate(newState) {
-        console.log('=== handleStateUpdate START ===');
-        console.log('Received new state:', JSON.stringify(newState));
-        console.log('Current state:', JSON.stringify(this.currentState));
+        console.log('🔥 [STATE_UPDATE] === handleStateUpdate START ===');
+        console.log('🔥 [STATE_UPDATE] Received new state:', JSON.stringify(newState));
+        console.log('🔥 [STATE_UPDATE] Current state:', JSON.stringify(this.currentState));
+        console.log('🔥 [STATE_UPDATE] isUploading:', this.isUploading);
+        console.log('🔥 [STATE_UPDATE] isDragging:', this.isDragging);
+        console.log('🔥 [STATE_UPDATE] isSyncing:', this.isSyncing);
 
         // Convert Firebase state format to our format
         const formattedState = {
@@ -212,25 +239,30 @@ class SyncGallery {
         };
 
         const stateChanged = JSON.stringify(formattedState) !== JSON.stringify(this.currentState);
-        console.log('State changed:', stateChanged, 'isDragging:', this.isDragging);
+        console.log('🔥 [STATE_UPDATE] State changed:', stateChanged);
 
         // 🔄 Check for new images
         if (newState.imagesVersion && 
             newState.imagesVersion !== this.currentState.imagesVersion) {
-            console.log('🖼️ Images version changed, reloading images...');
+            console.log('🔥 [STATE_UPDATE] 🖼️ Images version changed, updating lastKnownImagesVersion...');
+            console.log('🔥 [STATE_UPDATE] Old version:', this.currentState.imagesVersion, 'New version:', newState.imagesVersion);
             this.lastKnownImagesVersion = newState.imagesVersion;
             this.updateSyncIndicator('images', 'syncing');
         }
 
         if (stateChanged && !this.isDragging) {
-            console.log('Applying new state from Firebase');
+            console.log('🔥 [STATE_UPDATE] Applying new state from Firebase');
             this.isSyncing = true;
             this.currentState = formattedState;
+            console.log('🔥 [STATE_UPDATE] Calling updateView...');
             this.updateView();
             this.isSyncing = false;
+            console.log('🔥 [STATE_UPDATE] updateView completed, updating sync status...');
             this.updateSyncStatus('success');
+        } else {
+            console.log('🔥 [STATE_UPDATE] Not applying state - stateChanged:', stateChanged, 'isDragging:', this.isDragging);
         }
-        console.log('=== handleStateUpdate END ===');
+        console.log('🔥 [STATE_UPDATE] === handleStateUpdate END ===');
     }
 
     setupElements() {
@@ -385,9 +417,13 @@ class SyncGallery {
         const validFiles = Array.from(files).filter(file => this.isValidImage(file));
         if (validFiles.length === 0) return;
 
-        console.log('🚀 Starting upload process for', validFiles.length, 'files');
+        console.log('🚀 [UPLOAD] Starting upload process for', validFiles.length, 'files');
+        console.log('🚀 [UPLOAD] Current state before upload:', JSON.stringify(this.currentState));
+        console.log('🚀 [UPLOAD] Polling status before upload:', this.pollingInterval ? 'ACTIVE' : 'INACTIVE');
+        
         this.isUploading = true;
         // Pausa il polling durante l'upload per evitare conflitti
+        console.log('🚀 [UPLOAD] Stopping polling...');
         this.stopPolling();
         
         // Reset progress values before showing
@@ -400,6 +436,7 @@ class SyncGallery {
             
             for (let i = 0; i < validFiles.length; i++) {
                 const file = validFiles[i];
+                console.log(`🚀 [UPLOAD] Compressing file ${i + 1}/${validFiles.length}: ${file.name}`);
                 this.updateUploadProgress(
                     `Compressione ${i + 1} di ${validFiles.length}: ${file.name}`,
                     (i / validFiles.length) * 40
@@ -415,8 +452,10 @@ class SyncGallery {
                 50
             );
             
+            console.log('🚀 [UPLOAD] Starting PHP backend upload...');
             // Upload all files to PHP backend
             const uploadResult = await uploadImages(compressedFiles);
+            console.log('🚀 [UPLOAD] PHP backend upload result:', uploadResult);
             
             this.updateUploadProgress(
                 'Upload completato, aggiornamento galleria...',
@@ -424,30 +463,45 @@ class SyncGallery {
             );
             
             if (!uploadResult.success) {
+                console.error('🚀 [UPLOAD] Upload failed:', uploadResult.error);
                 throw new Error(uploadResult.error || 'Errore durante il caricamento');
             }
             
+            console.log('🚀 [UPLOAD] Upload successful, reloading images...');
             this.updateUploadProgress(
                 'Ricaricamento immagini...',
                 90
             );
             
             // Reload images after successful upload
+            console.log('🚀 [UPLOAD] Calling loadImages()...');
             await this.loadImages();
+            console.log('🚀 [UPLOAD] loadImages() completed');
 
             this.updateUploadProgress(
                 'Sincronizzazione con altri client...',
                 95
             );
 
+            console.log('🚀 [UPLOAD] Updating Firebase imagesVersion...');
+            const newImagesVersion = Date.now();
+            console.log('🚀 [UPLOAD] New imagesVersion:', newImagesVersion);
+            
             // Notify other clients about new images
-            await updateGalleryState({ imagesVersion: Date.now() });
+            const syncResult = await updateGalleryState({ imagesVersion: newImagesVersion });
+            console.log('🚀 [UPLOAD] Firebase sync result:', syncResult);
+            
+            if (!syncResult.success) {
+                console.error('🚀 [UPLOAD] Firebase sync failed:', syncResult.error);
+                throw new Error('Errore sincronizzazione Firebase: ' + syncResult.error);
+            }
 
             this.updateUploadProgress(
                 'Completato!',
                 100
             );
 
+            console.log('🚀 [UPLOAD] Upload process completed successfully');
             this.updateStatus(`${compressedFiles.length} immagini caricate e compresse con successo`, 'success');
             
             if (uploadResult.errors && uploadResult.errors.length > 0) {
@@ -456,10 +510,12 @@ class SyncGallery {
             }
 
         } catch (error) {
-            console.error('Upload error:', error);
+            console.error('🚀 [UPLOAD] Upload error:', error);
+            console.error('🚀 [UPLOAD] Error stack:', error.stack);
             this.updateStatus('Errore durante il caricamento', 'error');
             this.showNotification('Errore durante il caricamento: ' + error.message, 'error');
         } finally {
+            console.log('🚀 [UPLOAD] Upload process finished, cleaning up...');
             this.isUploading = false;
             // Hide progress after a short delay to show completion
             setTimeout(() => {
@@ -468,6 +524,7 @@ class SyncGallery {
             this.fileInput.value = '';
             // Riavvia il polling dopo l'upload
             setTimeout(() => {
+                console.log('🚀 [UPLOAD] Restarting polling after upload...');
                 this.startPolling();
             }, 2000);
         }
@@ -574,26 +631,35 @@ class SyncGallery {
 
     async loadImages() {
         try {
+            console.log('📸 [LOAD_IMAGES] Starting loadImages...');
+            console.log('📸 [LOAD_IMAGES] isUploading:', this.isUploading);
             this.updateSyncIndicator('images', 'loading');
             
+            console.log('📸 [LOAD_IMAGES] Calling fetchImages()...');
             const result = await fetchImages();
+            console.log('📸 [LOAD_IMAGES] fetchImages result:', result);
             
             if (result.success) {
                 this.images = result.images || [];
-                console.log('📸 Loaded images:', this.images.length, 'images');
+                console.log('📸 [LOAD_IMAGES] Loaded images:', this.images.length, 'images');
                 this.images.forEach(img => {
-                    console.log('Image:', img.filename, 'URL:', img.filepath);
+                    console.log('📸 [LOAD_IMAGES] Image:', img.filename, 'URL:', img.filepath);
                 });
                 this.updateSyncIndicator('images', 'synced');
             } else {
+                console.error('📸 [LOAD_IMAGES] fetchImages failed:', result.error);
                 throw new Error(result.error || 'Errore nel caricamento immagini');
             }
             
+            console.log('📸 [LOAD_IMAGES] Rendering thumbnails...');
             this.renderThumbnails();
+            console.log('📸 [LOAD_IMAGES] Updating image count...');
             this.updateImageCount();
+            console.log('📸 [LOAD_IMAGES] loadImages completed successfully');
 
         } catch (error) {
-            console.error('Error loading images:', error);
+            console.error('📸 [LOAD_IMAGES] Error loading images:', error);
+            console.error('📸 [LOAD_IMAGES] Error stack:', error.stack);
             this.updateStatus('Errore nel caricamento immagini', 'error');
             this.updateSyncIndicator('images', 'error');
         }
@@ -1024,52 +1090,69 @@ class SyncGallery {
     }
 
     async syncState() {
-        console.log('=== syncState START ===');
-        console.log('Syncing state to Firebase:', JSON.stringify(this.currentState));
+        console.log('🔥 [SYNC_STATE] === syncState START ===');
+        console.log('🔥 [SYNC_STATE] Syncing state to Firebase:', JSON.stringify(this.currentState));
+        console.log('🔥 [SYNC_STATE] isUploading:', this.isUploading);
+        console.log('🔥 [SYNC_STATE] isSyncing:', this.isSyncing);
 
         // Non sincronizzare durante l'upload per evitare conflitti
         if (this.isUploading) {
-            console.log('Skipping sync during upload');
+            console.log('🔥 [SYNC_STATE] Skipping sync during upload');
             return;
         }
 
         try {
+            console.log('🔥 [SYNC_STATE] Updating sync status to syncing...');
             this.updateSyncStatus('syncing');
+            console.log('🔥 [SYNC_STATE] Calling updateGalleryState...');
             const result = await updateGalleryState(this.currentState);
+            console.log('🔥 [SYNC_STATE] updateGalleryState result:', result);
 
             if (result.success) {
-                console.log('State synced successfully to Firebase');
+                console.log('🔥 [SYNC_STATE] State synced successfully to Firebase');
                 this.updateSyncStatus('success');
                 return { success: true };
             } else {
-                console.error('Firebase sync error:', result.error);
+                console.error('🔥 [SYNC_STATE] Firebase sync error:', result.error);
                 this.updateSyncStatus('error');
                 return { success: false, error: result.error };
             }
         } catch (error) {
-            console.error('Network error:', error);
+            console.error('🔥 [SYNC_STATE] Network error:', error);
+            console.error('🔥 [SYNC_STATE] Error stack:', error.stack);
             this.updateSyncStatus('error');
             return { success: false, error: error.message };
         }
-        console.log('=== syncState END ===');
+        console.log('🔥 [SYNC_STATE] === syncState END ===');
     }
 
     updateSyncStatus(status) {
+        console.log('🔄 [SYNC_STATUS] updateSyncStatus called with:', status);
         const syncStatus = this.syncStatus;
+        
+        if (!syncStatus) {
+            console.error('🔄 [SYNC_STATUS] syncStatus element not found!');
+            return;
+        }
 
         switch (status) {
             case 'success':
+                console.log('🔄 [SYNC_STATUS] Setting success status');
                 syncStatus.textContent = '🔥 Firebase Sync';
                 syncStatus.style.color = 'var(--success-color)';
                 break;
             case 'error':
+                console.log('🔄 [SYNC_STATUS] Setting error status');
                 syncStatus.textContent = '❌ Errore sync';
                 syncStatus.style.color = 'var(--error-color)';
                 break;
             case 'syncing':
+                console.log('🔄 [SYNC_STATUS] Setting syncing status');
                 syncStatus.textContent = '🔄 Sincronizzazione...';
                 syncStatus.style.color = 'var(--primary-color)';
                 break;
+            default:
+                console.warn('🔄 [SYNC_STATUS] Unknown status:', status);
         }
     }
 
