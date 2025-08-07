@@ -620,6 +620,18 @@ body {
     font-weight: 500;
 }
 
+.sync-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--spacing-xs);
+}
+
+.detailed-sync {
+    font-size: 11px;
+    color: var(--text-muted);
+    opacity: 0.8;
+}
 /* Loading Overlay */
 .loading-overlay {
     position: fixed;

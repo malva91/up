@@ -20,6 +20,19 @@ class SyncGallery {
         this.isSyncing = false;
         this.stateListener = null;
         this.isInitialized = false;
+        
+        // Polling system
+        this.pollingInterval = null;
+        this.lastSyncTime = 0;
+        this.syncCheckInterval = 500; // 0.5 seconds
+        this.lastKnownImagesVersion = 0;
+        
+        // Sync status tracking
+        this.syncStatus = {
+            firebase: 'connecting',
+            images: 'checking',
+            lastUpdate: null
+        };
 
         this.init();
     }
@@ -44,6 +57,9 @@ class SyncGallery {
 
             // Load initial data
             await this.loadImages();
+            
+            // Start polling system
+            this.startPolling();
 
             this.updateSyncStatus('success');
             this.isInitialized = true;
@@ -71,6 +87,98 @@ class SyncGallery {
             this.updateSyncStatus('error');
         });
     }
+    startPolling() {
+        console.log('🔄 Starting polling system every', this.syncCheckInterval, 'ms');
+        
+        this.pollingInterval = setInterval(async () => {
+            await this.checkForUpdates();
+        }, this.syncCheckInterval);
+    }
+    
+    stopPolling() {
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+            console.log('⏹️ Polling stopped');
+        }
+    }
+    
+    async checkForUpdates() {
+        try {
+            // Check Firebase state
+            const stateSnapshot = await get(stateRef);
+            const currentFirebaseState = stateSnapshot.val();
+            
+            if (currentFirebaseState) {
+                // Check if images version changed
+                if (currentFirebaseState.imagesVersion && 
+                    currentFirebaseState.imagesVersion !== this.lastKnownImagesVersion) {
+                    console.log('📸 Images version changed, reloading...', 
+                        this.lastKnownImagesVersion, '->', currentFirebaseState.imagesVersion);
+                    
+                    await this.loadImages();
+                    this.lastKnownImagesVersion = currentFirebaseState.imagesVersion;
+                    this.updateSyncIndicator('images', 'synced');
+                }
+                
+                this.updateSyncIndicator('firebase', 'connected');
+                this.lastSyncTime = Date.now();
+            } else {
+                this.updateSyncIndicator('firebase', 'error');
+            }
+            
+        } catch (error) {
+            console.error('Polling check error:', error);
+            this.updateSyncIndicator('firebase', 'error');
+        }
+    }
+    
+    updateSyncIndicator(type, status) {
+        this.syncStatus[type] = status;
+        this.syncStatus.lastUpdate = new Date().toLocaleTimeString();
+        this.renderSyncStatus();
+    }
+    
+    renderSyncStatus() {
+        const syncStatusElement = this.syncStatus;
+        const firebaseStatus = this.syncStatus.firebase;
+        const imagesStatus = this.syncStatus.images;
+        
+        // Update main sync status
+        let statusText = '';
+        let statusColor = '';
+        
+        if (firebaseStatus === 'connected' && imagesStatus === 'synced') {
+            statusText = '🔥 Tutto sincronizzato';
+            statusColor = 'var(--success-color)';
+        } else if (firebaseStatus === 'connecting' || imagesStatus === 'checking') {
+            statusText = '🔄 Controllo sincronizzazione...';
+            statusColor = 'var(--primary-color)';
+        } else {
+            statusText = '❌ Errore sincronizzazione';
+            statusColor = 'var(--error-color)';
+        }
+        
+        const syncElement = document.getElementById('syncStatus');
+        if (syncElement) {
+            syncElement.textContent = statusText;
+            syncElement.style.color = statusColor;
+        }
+        
+        // Update detailed status in status bar
+        const detailedStatus = document.getElementById('detailedSyncStatus');
+        if (detailedStatus) {
+            detailedStatus.innerHTML = `
+                Firebase: <span style="color: ${firebaseStatus === 'connected' ? 'var(--success-color)' : 'var(--error-color)'}">
+                    ${firebaseStatus === 'connected' ? '✅' : '❌'}
+                </span> | 
+                Immagini: <span style="color: ${imagesStatus === 'synced' ? 'var(--success-color)' : 'var(--primary-color)'}">
+                    ${imagesStatus === 'synced' ? '✅' : '🔄'}
+                </span> | 
+                Ultimo: ${this.syncStatus.lastUpdate || 'mai'}
+            `;
+        }
+    }
 
     handleStateUpdate(newState) {
         console.log('=== handleStateUpdate START ===');
@@ -93,7 +201,8 @@ class SyncGallery {
         if (newState.imagesVersion && 
             newState.imagesVersion !== this.currentState.imagesVersion) {
             console.log('🖼️ Images version changed, reloading images...');
-            await this.loadImages();
+            this.lastKnownImagesVersion = newState.imagesVersion;
+            this.updateSyncIndicator('images', 'syncing');
         }
 
         if (stateChanged && !this.isDragging) {
@@ -188,6 +297,44 @@ class SyncGallery {
         document.addEventListener('dragover', (e) => e.preventDefault());
         document.addEventListener('drop', (e) => e.preventDefault());
     }
+    // Image compression utility
+    async compressImage(file, maxWidth = 1920, maxHeight = 1080, quality = 0.8) {
+        return new Promise((resolve) => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            img.onload = () => {
+                // Calculate new dimensions
+                let { width, height } = img;
+                
+                if (width > maxWidth || height > maxHeight) {
+                    const ratio = Math.min(maxWidth / width, maxHeight / height);
+                    width *= ratio;
+                    height *= ratio;
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                // Draw and compress
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                canvas.toBlob((blob) => {
+                    // Create new file with compressed data
+                    const compressedFile = new File([blob], file.name, {
+                        type: file.type,
+                        lastModified: Date.now()
+                    });
+                    
+                    console.log(`📦 Compressed ${file.name}: ${(file.size / 1024).toFixed(1)}KB -> ${(compressedFile.size / 1024).toFixed(1)}KB`);
+                    resolve(compressedFile);
+                }, file.type, quality);
+            };
+            
+            img.src = URL.createObjectURL(file);
+        });
+    }
 
     async handleFiles(files) {
         if (this.isUploading) return;
@@ -199,16 +346,31 @@ class SyncGallery {
         this.showLoadingOverlay();
 
         try {
+            // Compress images before upload
+            const compressedFiles = [];
+            
             for (let i = 0; i < validFiles.length; i++) {
                 const file = validFiles[i];
                 this.updateLoadingProgress(
-                    `Caricamento ${i + 1} di ${validFiles.length}: ${file.name}`,
+                    `Compressione ${i + 1} di ${validFiles.length}: ${file.name}`,
                     (i / validFiles.length) * 100
+                );
+                
+                const compressedFile = await this.compressImage(file);
+                compressedFiles.push(compressedFile);
+            }
+            
+            // Upload compressed files
+            for (let i = 0; i < compressedFiles.length; i++) {
+                const file = compressedFiles[i];
+                this.updateLoadingProgress(
+                    `Caricamento ${i + 1} di ${compressedFiles.length}: ${file.name}`,
+                    50 + (i / compressedFiles.length) * 50
                 );
             }
             
             // Upload all files to PHP backend
-            const uploadResult = await uploadImages(validFiles);
+            const uploadResult = await uploadImages(compressedFiles);
             
             if (!uploadResult.success) {
                 throw new Error(uploadResult.error || 'Errore durante il caricamento');
@@ -220,7 +382,7 @@ class SyncGallery {
             // Notify other clients about new images
             await updateGalleryState({ imagesVersion: Date.now() });
 
-            this.updateStatus(`${validFiles.length} immagini caricate con successo`, 'success');
+            this.updateStatus(`${compressedFiles.length} immagini caricate e compresse con successo`, 'success');
             
             if (uploadResult.errors && uploadResult.errors.length > 0) {
                 console.warn('Upload warnings:', uploadResult.errors);
@@ -271,10 +433,13 @@ class SyncGallery {
 
     async loadImages() {
         try {
+            this.updateSyncIndicator('images', 'loading');
+            
             const result = await fetchImages();
             
             if (result.success) {
                 this.images = result.images || [];
+                this.updateSyncIndicator('images', 'synced');
             } else {
                 throw new Error(result.error || 'Errore nel caricamento immagini');
             }
@@ -285,6 +450,7 @@ class SyncGallery {
         } catch (error) {
             console.error('Error loading images:', error);
             this.updateStatus('Errore nel caricamento immagini', 'error');
+            this.updateSyncIndicator('images', 'error');
         }
     }
 
@@ -796,6 +962,9 @@ class SyncGallery {
         if (this.stateListener) {
             this.stateListener();
         }
+        
+        // Stop polling
+        this.stopPolling();
 
         // Remove DOM event listeners
         document.removeEventListener('mousemove', this.handlePan);
