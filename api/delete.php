@@ -41,7 +41,7 @@ try {
     }
     
     // Delete physical file
-    $fullPath = __DIR__ . '/../' . $image['filepath'];
+    $fullPath = UPLOAD_DIR . basename($image['filepath']);
     if (file_exists($fullPath)) {
         unlink($fullPath);
     }

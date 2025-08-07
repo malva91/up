@@ -32,7 +32,7 @@ try {
         $formattedImages[] = [
             'id' => (string)$image['id'],
             'filename' => $image['original_name'],
-            'filepath' => $baseUrl . '/' . $image['filepath'],
+            'filepath' => $baseUrl . '/uploads/' . basename($image['filepath']),
             'storageRef' => $image['filepath'],
             'uploadTime' => (int)$image['upload_time'],
             'fileSize' => (int)$image['file_size'],

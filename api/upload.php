@@ -82,7 +82,7 @@ try {
         $uploadedFiles[] = [
             'id' => $pdo->lastInsertId(),
             'filename' => $file['name'],
-            'filepath' => getBaseUrl() . '/' . $webPath,
+            'filepath' => getBaseUrl() . '/uploads/' . $filename,
             'storageRef' => $webPath,
             'uploadTime' => $uploadTime
         ];

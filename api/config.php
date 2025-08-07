@@ -96,7 +96,7 @@ function generateFilename($originalName) {
 function getBaseUrl() {
     $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
     $host = $_SERVER['HTTP_HOST'];
-    $path = dirname($_SERVER['REQUEST_URI']);
+    $path = dirname(dirname($_SERVER['REQUEST_URI'])); // Go up one level from /api/
     return $protocol . '://' . $host . $path;
 }
 ?>
