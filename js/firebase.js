@@ -43,7 +43,7 @@ console.info('🔥 Firebase initialised');
 // ------------------------------------------------------------
 // Database references
 // ------------------------------------------------------------
-const stateRef  = ref(database, 'gallery/state');
+const stateRef  = ref(database, 'galleryPEPPE/state');
 
 // ------------------------------------------------------------
 // Helper functions (public API)
