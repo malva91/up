@@ -934,24 +934,28 @@ body {
     z-index: 99;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     min-height: 120px;
+    opacity: 0;
+    visibility: hidden;
 }
 
 .upload-progress.show {
     transform: translateY(0);
+    opacity: 1;
+    visibility: visible;
 }
 
 .upload-zone {
     position: relative;
 }
 
-.progress-header {
+.upload-progress-header {
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
     margin-bottom: var(--spacing-md);
 }
 
-.progress-spinner {
+.upload-progress-spinner {
     width: 20px;
     height: 20px;
     border: 2px solid var(--border-color);
@@ -960,18 +964,18 @@ body {
     animation: spin 1s linear infinite;
 }
 
-.progress-text {
+.upload-progress-text {
     font-weight: 600;
     color: var(--text-primary);
 }
 
-.progress-details {
+.upload-progress-details {
     font-size: 0.85em;
     color: var(--text-secondary);
     margin-bottom: var(--spacing-md);
 }
 
-.progress-bar-container {
+.upload-progress-bar-container {
     background: var(--surface-light);
     border-radius: var(--radius-sm);
     height: 8px;
@@ -979,7 +983,7 @@ body {
     margin-bottom: var(--spacing-sm);
 }
 
-.progress-bar-fill {
+.upload-progress-bar-fill {
     height: 100%;
     background: var(--gradient-primary);
     width: 0%;
@@ -987,7 +991,7 @@ body {
     border-radius: var(--radius-sm);
 }
 
-.progress-percentage {
+.upload-progress-percentage {
     text-align: center;
     font-size: 0.8em;
     color: var(--text-muted);

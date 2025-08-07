@@ -261,6 +261,12 @@ class SyncGallery {
         this.modalMessage = document.getElementById('modalMessage');
         this.modalCancel = document.getElementById('modalCancel');
         this.modalConfirm = document.getElementById('modalConfirm');
+        
+        // Inizializza la barra di progresso come nascosta
+        if (this.uploadProgress) {
+            this.uploadProgress.style.display = 'none';
+            this.uploadProgress.classList.remove('show');
+        }
     }
 
     setupEventListeners() {
@@ -379,9 +385,13 @@ class SyncGallery {
         const validFiles = Array.from(files).filter(file => this.isValidImage(file));
         if (validFiles.length === 0) return;
 
+        console.log('🚀 Starting upload process for', validFiles.length, 'files');
         this.isUploading = true;
         // Pausa il polling durante l'upload per evitare conflitti
         this.stopPolling();
+        
+        // Reset progress values before showing
+        this.updateUploadProgress('Preparazione file...', 0);
         this.showUploadProgress();
 
         try {
@@ -481,27 +491,53 @@ class SyncGallery {
     }
 
     showUploadProgress() {
-        this.uploadProgress.classList.add('show');
+        console.log('📤 Showing upload progress');
+        if (this.uploadProgress) {
+            this.uploadProgress.style.display = 'block';
+            // Force reflow before adding class
+            this.uploadProgress.offsetHeight;
+            this.uploadProgress.classList.add('show');
+        }
     }
 
     hideUploadProgress() {
-        this.uploadProgress.classList.remove('show');
+        console.log('📤 Hiding upload progress');
+        if (this.uploadProgress) {
+            this.uploadProgress.classList.remove('show');
+            // Hide after animation completes
+            setTimeout(() => {
+                this.uploadProgress.style.display = 'none';
+            }, 300);
+        }
     }
 
     updateUploadProgress(text, percentage) {
-        this.progressDetails.textContent = text;
-        this.progressBarFill.style.width = percentage + '%';
-        this.progressPercentage.textContent = Math.round(percentage) + '%';
+        console.log('📊 Updating progress:', text, percentage + '%');
+        
+        if (this.progressDetails) {
+            this.progressDetails.textContent = text;
+        }
+        if (this.progressBarFill) {
+            this.progressBarFill.style.width = percentage + '%';
+        }
+        if (this.progressPercentage) {
+            this.progressPercentage.textContent = Math.round(percentage) + '%';
+        }
         
         // Update main progress text based on percentage
+        let mainText = 'Caricamento in corso...';
         if (percentage < 40) {
-            this.progressText.textContent = 'Compressione immagini...';
+            mainText = 'Compressione immagini...';
         } else if (percentage < 80) {
-            this.progressText.textContent = 'Caricamento in corso...';
+            mainText = 'Caricamento in corso...';
         } else if (percentage < 100) {
-            this.progressText.textContent = 'Finalizzazione...';
+            mainText = 'Finalizzazione...';
         } else {
-            this.progressText.textContent = 'Completato!';
+            mainText = 'Completato!';
+        }
+        
+        if (this.progressText) {
+            this.progressText.textContent = mainText;
         }
     }
     
@@ -616,10 +652,13 @@ class SyncGallery {
         
         if (confirmed) {
             try {
+                console.log('🗑️ Starting delete process for:', image.filename);
                 // Pausa il polling durante l'eliminazione
                 this.stopPolling();
+                
+                // Reset and show progress
+                this.updateUploadProgress('Eliminazione in corso...', 0);
                 this.showUploadProgress();
-                this.updateUploadProgress('Eliminazione in corso...', 30);
                 
                 const result = await deleteImage(image.id);
                 
