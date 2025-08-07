@@ -134,8 +134,13 @@ class SyncGallery {
                     console.log('🔄 [POLLING] Calling loadImages from polling...');
                     await this.loadImages();
                     this.lastKnownImagesVersion = currentFirebaseState.imagesVersion;
-                    this.updateSyncIndicator('images', 'synced');
                     console.log('🔄 [POLLING] Images reloaded successfully');
+                } else {
+                    // Se la versione è la stessa, assicuriamoci che lo stato sia 'synced'
+                    if (this.syncStatus.images !== 'synced') {
+                        console.log('🔄 [POLLING] Setting images status to synced - no version change');
+                        this.updateSyncIndicator('images', 'synced');
+                    }
                 }
                 
                 this.updateSyncIndicator('firebase', 'connected');
