@@ -392,51 +392,74 @@ class SyncGallery {
                 const file = validFiles[i];
                 this.updateUploadProgress(
                     `Compressione ${i + 1} di ${validFiles.length}: ${file.name}`,
-                    (i / validFiles.length) * 100
+                    (i / validFiles.length) * 40
                 );
                 
                 const compressedFile = await this.compressImage(file);
                 compressedFiles.push(compressedFile);
             }
             
-            // Upload compressed files
-            for (let i = 0; i < compressedFiles.length; i++) {
-                const file = compressedFiles[i];
-                this.updateUploadProgress(
-                    `Caricamento ${i + 1} di ${compressedFiles.length}: ${file.name}`,
-                    50 + (i / compressedFiles.length) * 50
-                );
-            }
+            // Update progress for upload phase
+            this.updateUploadProgress(
+                `Caricamento ${compressedFiles.length} file sul server...`,
+                50
+            );
             
             // Upload all files to PHP backend
             const uploadResult = await uploadImages(compressedFiles);
+            
+            this.updateUploadProgress(
+                'Upload completato, aggiornamento galleria...',
+                80
+            );
             
             if (!uploadResult.success) {
                 throw new Error(uploadResult.error || 'Errore durante il caricamento');
             }
             
+            this.updateUploadProgress(
+                'Ricaricamento immagini...',
+                90
+            );
+            
             // Reload images after successful upload
             await this.loadImages();
 
+            this.updateUploadProgress(
+                'Sincronizzazione con altri client...',
+                95
+            );
+
             // Notify other clients about new images
             await updateGalleryState({ imagesVersion: Date.now() });
+
+            this.updateUploadProgress(
+                'Completato!',
+                100
+            );
 
             this.updateStatus(`${compressedFiles.length} immagini caricate e compresse con successo`, 'success');
             
             if (uploadResult.errors && uploadResult.errors.length > 0) {
                 console.warn('Upload warnings:', uploadResult.errors);
-                this.showNotification(`Caricati ${uploadResult.uploaded} file. Alcuni errori: ${uploadResult.errors.join(', ')}`, 'warning');
+                this.showNotification(`Caricati ${uploadResult.uploaded} file con successo!`, 'success');
             }
 
         } catch (error) {
             console.error('Upload error:', error);
             this.updateStatus('Errore durante il caricamento', 'error');
+            this.showNotification('Errore durante il caricamento: ' + error.message, 'error');
         } finally {
             this.isUploading = false;
-            this.hideUploadProgress();
+            // Hide progress after a short delay to show completion
+            setTimeout(() => {
+                this.hideUploadProgress();
+            }, 1500);
             this.fileInput.value = '';
             // Riavvia il polling dopo l'upload
-            this.startPolling();
+            setTimeout(() => {
+                this.startPolling();
+            }, 2000);
         }
     }
 
@@ -471,12 +494,14 @@ class SyncGallery {
         this.progressPercentage.textContent = Math.round(percentage) + '%';
         
         // Update main progress text based on percentage
-        if (percentage < 50) {
+        if (percentage < 40) {
             this.progressText.textContent = 'Compressione immagini...';
-        } else if (percentage < 100) {
+        } else if (percentage < 80) {
             this.progressText.textContent = 'Caricamento in corso...';
-        } else {
+        } else if (percentage < 100) {
             this.progressText.textContent = 'Finalizzazione...';
+        } else {
+            this.progressText.textContent = 'Completato!';
         }
     }
     
@@ -519,6 +544,10 @@ class SyncGallery {
             
             if (result.success) {
                 this.images = result.images || [];
+                console.log('📸 Loaded images:', this.images.length, 'images');
+                this.images.forEach(img => {
+                    console.log('Image:', img.filename, 'URL:', img.filepath);
+                });
                 this.updateSyncIndicator('images', 'synced');
             } else {
                 throw new Error(result.error || 'Errore nel caricamento immagini');
@@ -590,22 +619,32 @@ class SyncGallery {
                 // Pausa il polling durante l'eliminazione
                 this.stopPolling();
                 this.showUploadProgress();
-                this.updateUploadProgress('Eliminazione in corso...', 50);
+                this.updateUploadProgress('Eliminazione in corso...', 30);
                 
                 const result = await deleteImage(image.id);
+                
+                this.updateUploadProgress('Aggiornamento galleria...', 60);
                 
                 if (result.success) {
                     // If deleted image was selected, clear selection
                     if (this.currentState.selectedImage === image.filepath) {
                         this.currentState.selectedImage = '';
-                        await this.syncState();
+                        this.updateUploadProgress('Aggiornamento selezione...', 80);
+                        await updateGalleryState({ 
+                            selectedImage: '',
+                            imagesVersion: Date.now() 
+                        });
+                    } else {
+                        this.updateUploadProgress('Sincronizzazione...', 80);
+                        // Notify other clients about image deletion
+                        await updateGalleryState({ imagesVersion: Date.now() });
                     }
                     
+                    this.updateUploadProgress('Ricaricamento immagini...', 90);
                     // Reload images
                     await this.loadImages();
                     
-                    // Notify other clients about image deletion
-                    await updateGalleryState({ imagesVersion: Date.now() });
+                    this.updateUploadProgress('Completato!', 100);
                     
                     this.showNotification('Immagine eliminata con successo', 'success');
                 } else {
@@ -616,9 +655,14 @@ class SyncGallery {
                 console.error('Delete error:', error);
                 this.showNotification('Errore durante l\'eliminazione', 'error');
             } finally {
-                this.hideUploadProgress();
+                // Hide progress after a short delay
+                setTimeout(() => {
+                    this.hideUploadProgress();
+                }, 1000);
                 // Riavvia il polling dopo l'eliminazione
-                this.startPolling();
+                setTimeout(() => {
+                    this.startPolling();
+                }, 1500);
             }
         }
     }
@@ -672,11 +716,13 @@ class SyncGallery {
 
     updateView() {
         if (this.currentState.selectedImage) {
+            console.log('🖼️ Loading image:', this.currentState.selectedImage);
             this.currentImage.src = this.currentState.selectedImage;
             this.currentImage.style.display = 'block';
             this.noImage.style.display = 'none';
 
             this.currentImage.onload = () => {
+                console.log('✅ Image loaded successfully');
                 if (!this.isSyncing && !this.hasImageLoaded) {
                     console.log('Image loaded - calling fitImageToViewer (not syncing)');
                     this.fitImageToViewer();
@@ -686,6 +732,15 @@ class SyncGallery {
                     this.calculateBaseScale();
                     this.updateImageTransform();
                 }
+            };
+
+            this.currentImage.onerror = () => {
+                console.error('❌ Failed to load image:', this.currentState.selectedImage);
+                this.showNotification('Errore nel caricamento dell\'immagine', 'error');
+                // Try to reload images in case the URL changed
+                setTimeout(() => {
+                    this.loadImages();
+                }, 1000);
             };
 
             this.updateImageTransform();
