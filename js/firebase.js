@@ -13,6 +13,7 @@ import {
   onValue,
   push,
   serverTimestamp,
+  update,
   goOnline
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
@@ -55,7 +56,7 @@ const stateRef  = ref(database, 'galleryPEPPE/state');
  */
 async function updateGalleryState(state) {
   try {
-    await set(stateRef, { ...state, updatedAt: serverTimestamp() });
+    await update(stateRef, { ...state, updatedAt: serverTimestamp() });
     return { success: true };
   } catch (err) {
     console.error('Error updating state:', err);
@@ -150,6 +151,7 @@ async function initializeDefaultState() {
         zoom: 1,
         pan: { x: 0, y: 0 },
         backgroundColor: '#0000ff',
+        imagesVersion: 0,
         updatedAt: serverTimestamp()
       });
       console.info('✅ Default state initialised');
@@ -173,6 +175,7 @@ export {
   onValue,
   push,
   serverTimestamp,
+  update,
 
   // common references
   stateRef,

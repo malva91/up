@@ -1,5 +1,5 @@
 import {
-    database, stateRef, updateGalleryState, uploadImages, fetchImages, deleteImage, initializeDefaultState, ref, onValue, get,
+    database, stateRef, updateGalleryState, uploadImages, fetchImages, deleteImage, initializeDefaultState, ref, onValue, get, update,
     } from './firebase.js';
 
 class SyncGallery {
@@ -8,7 +8,8 @@ class SyncGallery {
             selectedImage: '',
             zoom: 1,
             pan: { x: 0, y: 0 },
-            backgroundColor: '#0000ff'
+            backgroundColor: '#0000ff',
+            imagesVersion: 0
         };
 
         this.isDragging = false;
@@ -81,11 +82,19 @@ class SyncGallery {
             selectedImage: newState.selectedImage || '',
             zoom: newState.zoom || 1,
             pan: newState.pan || { x: 0, y: 0 },
-            backgroundColor: newState.backgroundColor || '#0000ff'
+            backgroundColor: newState.backgroundColor || '#0000ff',
+            imagesVersion: newState.imagesVersion || 0
         };
 
         const stateChanged = JSON.stringify(formattedState) !== JSON.stringify(this.currentState);
         console.log('State changed:', stateChanged, 'isDragging:', this.isDragging);
+
+        // 🔄 Check for new images
+        if (newState.imagesVersion && 
+            newState.imagesVersion !== this.currentState.imagesVersion) {
+            console.log('🖼️ Images version changed, reloading images...');
+            await this.loadImages();
+        }
 
         if (stateChanged && !this.isDragging) {
             console.log('Applying new state from Firebase');
@@ -207,6 +216,9 @@ class SyncGallery {
             
             // Reload images after successful upload
             await this.loadImages();
+
+            // Notify other clients about new images
+            await updateGalleryState({ imagesVersion: Date.now() });
 
             this.updateStatus(`${validFiles.length} immagini caricate con successo`, 'success');
             
@@ -335,6 +347,10 @@ class SyncGallery {
                     
                     // Reload images
                     await this.loadImages();
+                    
+                    // Notify other clients about image deletion
+                    await updateGalleryState({ imagesVersion: Date.now() });
+                    
                     this.showNotification('Immagine eliminata con successo', 'success');
                 } else {
                     throw new Error(result.error || 'Errore durante l\'eliminazione');
