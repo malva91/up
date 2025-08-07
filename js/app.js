@@ -265,7 +265,10 @@ class SyncGallery {
             console.log('🔥 [STATE_UPDATE] 🖼️ Images version changed, updating lastKnownImagesVersion...');
             console.log('🔥 [STATE_UPDATE] Old version:', this.currentState.imagesVersion, 'New version:', newState.imagesVersion);
             this.lastKnownImagesVersion = newState.imagesVersion;
-            this.updateSyncIndicator('images', 'syncing');
+            // Solo aggiorna a 'syncing' se non stiamo caricando
+            if (!this.isUploading) {
+                this.updateSyncIndicator('images', 'syncing');
+            }
         }
 
         if (stateChanged && !this.isDragging) {
