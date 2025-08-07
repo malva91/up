@@ -92,8 +92,6 @@ class SyncGallery {
         });
     }
     startPolling() {
-        console.log('🔄 Starting polling system every', this.syncCheckInterval, 'ms');
-        
         this.pollingInterval = setInterval(async () => {
             await this.checkForUpdates();
         }, this.syncCheckInterval);
@@ -106,39 +104,30 @@ class SyncGallery {
         if (this.pollingInterval) {
             clearInterval(this.pollingInterval);
             this.pollingInterval = null;
-            console.log('⏹️ Polling stopped');
         }
     }
     
     async checkForUpdates() {
         // Non fare controlli se stiamo caricando
         if (this.isUploading) {
-            console.log('🔄 [POLLING] Skipping check - upload in progress');
             return;
         }
         
         try {
-            console.log('🔄 [POLLING] Checking for updates...');
             // Check Firebase state
             const stateSnapshot = await get(stateRef);
             const currentFirebaseState = stateSnapshot.val();
-            console.log('🔄 [POLLING] Current Firebase state:', currentFirebaseState);
             
             if (currentFirebaseState) {
                 // Check if images version changed
                 if (currentFirebaseState.imagesVersion && 
                     currentFirebaseState.imagesVersion !== this.lastKnownImagesVersion) {
-                    console.log('🔄 [POLLING] Images version changed, reloading...', 
-                        this.lastKnownImagesVersion, '->', currentFirebaseState.imagesVersion);
                     
-                    console.log('🔄 [POLLING] Calling loadImages from polling...');
                     await this.loadImages();
                     this.lastKnownImagesVersion = currentFirebaseState.imagesVersion;
-                    console.log('🔄 [POLLING] Images reloaded successfully');
                 } else {
                     // Se la versione è la stessa, assicuriamoci che lo stato sia 'synced'
                     if (this.syncStatus.images !== 'synced') {
-                        console.log('🔄 [POLLING] Setting images status to synced - no version change');
                         this.updateSyncIndicator('images', 'synced');
                     }
                 }
@@ -146,13 +135,10 @@ class SyncGallery {
                 this.updateSyncIndicator('firebase', 'connected');
                 this.lastSyncTime = Date.now();
             } else {
-                console.warn('🔄 [POLLING] No Firebase state found');
                 this.updateSyncIndicator('firebase', 'error');
             }
             
         } catch (error) {
-            console.error('🔄 [POLLING] Polling check error:', error);
-            console.error('🔄 [POLLING] Error stack:', error.stack);
             // Solo mostra errore se non stiamo caricando
             if (!this.isUploading) {
                 this.updateSyncIndicator('firebase', 'error');
@@ -163,20 +149,12 @@ class SyncGallery {
     updateSyncIndicator(type, status) {
         this.syncStatus[type] = status;
         this.syncStatus.lastUpdate = new Date().toLocaleTimeString();
-        console.log('🔄 [UPDATE_SYNC_INDICATOR] Updated', type, 'to', status);
-        console.log('🔄 [UPDATE_SYNC_INDICATOR] Full syncStatus:', this.syncStatus);
         this.renderSyncStatus();
     }
     
     renderSyncStatus() {
-        console.log('🔄 [RENDER_SYNC] renderSyncStatus called');
-        console.log('🔄 [RENDER_SYNC] Current sync status:', this.syncStatus);
-        console.log('🔄 [RENDER_SYNC] isUploading:', this.isUploading);
-        
         const firebaseStatus = this.syncStatus.firebase || 'connecting';
         const imagesStatus = this.syncStatus.images || 'checking';
-        
-        console.log('🔄 [RENDER_SYNC] Firebase status:', firebaseStatus, 'Images status:', imagesStatus);
         
         // Update main sync status
         let statusText = '';
@@ -185,46 +163,36 @@ class SyncGallery {
         if (this.isUploading) {
             statusText = '📤 Caricamento in corso...';
             statusColor = 'var(--warning-color)';
-            console.log('🔄 [RENDER_SYNC] Upload in progress status');
         } else if (firebaseStatus === 'connected' && imagesStatus === 'synced') {
             statusText = '🔥 Tutto sincronizzato';
             statusColor = 'var(--success-color)';
-            console.log('🔄 [RENDER_SYNC] All synced status');
         } else if (firebaseStatus === 'connecting' || imagesStatus === 'checking') {
             statusText = '🔄 Controllo sincronizzazione...';
             statusColor = 'var(--primary-color)';
-            console.log('🔄 [RENDER_SYNC] Checking sync status');
         } else if (firebaseStatus === 'error' || imagesStatus === 'error') {
             statusText = '❌ Errore sincronizzazione';
             statusColor = 'var(--error-color)';
-            console.log('🔄 [RENDER_SYNC] Error sync status');
         } else {
             statusText = '🔄 Sincronizzazione...';
             statusColor = 'var(--primary-color)';
-            console.log('🔄 [RENDER_SYNC] Default sync status');
         }
         
         const syncElement = document.getElementById('syncStatus');
         if (syncElement) {
-            console.log('🔄 [RENDER_SYNC] Updating sync element with:', statusText);
             syncElement.textContent = statusText;
             syncElement.style.color = statusColor;
-        } else {
-            console.error('🔄 [RENDER_SYNC] syncStatus element not found in DOM!');
         }
         
         // Update detailed status in status bar
         const detailedStatus = document.getElementById('detailedSyncStatus');
         if (detailedStatus) {
             if (this.isUploading) {
-                console.log('🔄 [RENDER_SYNC] Updating detailed status for upload');
                 detailedStatus.innerHTML = `
                     <span style="color: var(--warning-color)">📤 Upload in corso...</span>
                 `;
                 return;
             }
             
-            console.log('🔄 [RENDER_SYNC] Updating detailed status for normal operation');
             detailedStatus.innerHTML = `
                 Firebase: <span style="color: ${firebaseStatus === 'connected' ? 'var(--success-color)' : 'var(--error-color)'}">
                     ${firebaseStatus === 'connected' ? '✅' : '❌'}
@@ -234,19 +202,10 @@ class SyncGallery {
                 </span> | 
                 Ultimo: ${this.syncStatus.lastUpdate || 'mai'}
             `;
-        } else {
-            console.error('🔄 [RENDER_SYNC] detailedSyncStatus element not found in DOM!');
         }
     }
 
     handleStateUpdate(newState) {
-        console.log('🔥 [STATE_UPDATE] === handleStateUpdate START ===');
-        console.log('🔥 [STATE_UPDATE] Received new state:', JSON.stringify(newState));
-        console.log('🔥 [STATE_UPDATE] Current state:', JSON.stringify(this.currentState));
-        console.log('🔥 [STATE_UPDATE] isUploading:', this.isUploading);
-        console.log('🔥 [STATE_UPDATE] isDragging:', this.isDragging);
-        console.log('🔥 [STATE_UPDATE] isSyncing:', this.isSyncing);
-
         // Convert Firebase state format to our format
         const formattedState = {
             selectedImage: newState.selectedImage || '',
@@ -257,13 +216,10 @@ class SyncGallery {
         };
 
         const stateChanged = JSON.stringify(formattedState) !== JSON.stringify(this.currentState);
-        console.log('🔥 [STATE_UPDATE] State changed:', stateChanged);
 
         // 🔄 Check for new images
         if (newState.imagesVersion && 
             newState.imagesVersion !== this.currentState.imagesVersion) {
-            console.log('🔥 [STATE_UPDATE] 🖼️ Images version changed, updating lastKnownImagesVersion...');
-            console.log('🔥 [STATE_UPDATE] Old version:', this.currentState.imagesVersion, 'New version:', newState.imagesVersion);
             this.lastKnownImagesVersion = newState.imagesVersion;
             // Solo aggiorna a 'syncing' se non stiamo caricando
             if (!this.isUploading) {
@@ -272,18 +228,12 @@ class SyncGallery {
         }
 
         if (stateChanged && !this.isDragging) {
-            console.log('🔥 [STATE_UPDATE] Applying new state from Firebase');
             this.isSyncing = true;
             this.currentState = formattedState;
-            console.log('🔥 [STATE_UPDATE] Calling updateView...');
             this.updateView();
             this.isSyncing = false;
-            console.log('🔥 [STATE_UPDATE] updateView completed, updating sync status...');
             this.updateSyncIndicator('firebase', 'connected');
-        } else {
-            console.log('🔥 [STATE_UPDATE] Not applying state - stateChanged:', stateChanged, 'isDragging:', this.isDragging);
         }
-        console.log('🔥 [STATE_UPDATE] === handleStateUpdate END ===');
     }
 
     setupElements() {
@@ -438,13 +388,8 @@ class SyncGallery {
         const validFiles = Array.from(files).filter(file => this.isValidImage(file));
         if (validFiles.length === 0) return;
 
-        console.log('🚀 [UPLOAD] Starting upload process for', validFiles.length, 'files');
-        console.log('🚀 [UPLOAD] Current state before upload:', JSON.stringify(this.currentState));
-        console.log('🚀 [UPLOAD] Polling status before upload:', this.pollingInterval ? 'ACTIVE' : 'INACTIVE');
-        
         this.isUploading = true;
         // Pausa il polling durante l'upload per evitare conflitti
-        console.log('🚀 [UPLOAD] Stopping polling...');
         this.stopPolling();
         
         // Reset progress values before showing
@@ -457,7 +402,6 @@ class SyncGallery {
             
             for (let i = 0; i < validFiles.length; i++) {
                 const file = validFiles[i];
-                console.log(`🚀 [UPLOAD] Compressing file ${i + 1}/${validFiles.length}: ${file.name}`);
                 this.updateUploadProgress(
                     `Compressione ${i + 1} di ${validFiles.length}: ${file.name}`,
                     (i / validFiles.length) * 40
@@ -473,10 +417,8 @@ class SyncGallery {
                 50
             );
             
-            console.log('🚀 [UPLOAD] Starting PHP backend upload...');
             // Upload all files to PHP backend
             const uploadResult = await uploadImages(compressedFiles);
-            console.log('🚀 [UPLOAD] PHP backend upload result:', uploadResult);
             
             this.updateUploadProgress(
                 'Upload completato, aggiornamento galleria...',
@@ -484,36 +426,28 @@ class SyncGallery {
             );
             
             if (!uploadResult.success) {
-                console.error('🚀 [UPLOAD] Upload failed:', uploadResult.error);
                 throw new Error(uploadResult.error || 'Errore durante il caricamento');
             }
             
-            console.log('🚀 [UPLOAD] Upload successful, reloading images...');
             this.updateUploadProgress(
                 'Ricaricamento immagini...',
                 90
             );
             
             // Reload images after successful upload
-            console.log('🚀 [UPLOAD] Calling loadImages()...');
             await this.loadImages();
-            console.log('🚀 [UPLOAD] loadImages() completed');
 
             this.updateUploadProgress(
                 'Sincronizzazione con altri client...',
                 95
             );
 
-            console.log('🚀 [UPLOAD] Updating Firebase imagesVersion...');
             const newImagesVersion = Date.now();
-            console.log('🚀 [UPLOAD] New imagesVersion:', newImagesVersion);
             
             // Notify other clients about new images
             const syncResult = await updateGalleryState({ imagesVersion: newImagesVersion });
-            console.log('🚀 [UPLOAD] Firebase sync result:', syncResult);
             
             if (!syncResult.success) {
-                console.error('🚀 [UPLOAD] Firebase sync failed:', syncResult.error);
                 throw new Error('Errore sincronizzazione Firebase: ' + syncResult.error);
             }
 
@@ -522,7 +456,6 @@ class SyncGallery {
                 100
             );
 
-            console.log('🚀 [UPLOAD] Upload process completed successfully');
             this.updateStatus(`${compressedFiles.length} immagini caricate e compresse con successo`, 'success');
             
             if (uploadResult.errors && uploadResult.errors.length > 0) {
@@ -531,12 +464,9 @@ class SyncGallery {
             }
 
         } catch (error) {
-            console.error('🚀 [UPLOAD] Upload error:', error);
-            console.error('🚀 [UPLOAD] Error stack:', error.stack);
             this.updateStatus('Errore durante il caricamento', 'error');
             this.showNotification('Errore durante il caricamento: ' + error.message, 'error');
         } finally {
-            console.log('🚀 [UPLOAD] Upload process finished, cleaning up...');
             this.isUploading = false;
             // Hide progress after a short delay to show completion
             setTimeout(() => {
@@ -545,7 +475,6 @@ class SyncGallery {
             this.fileInput.value = '';
             // Riavvia il polling dopo l'upload
             setTimeout(() => {
-                console.log('🚀 [UPLOAD] Restarting polling after upload...');
                 this.startPolling();
             }, 2000);
         }
@@ -569,7 +498,6 @@ class SyncGallery {
     }
 
     showUploadProgress() {
-        console.log('📤 Showing upload progress');
         if (this.uploadProgress) {
             this.uploadProgress.style.display = 'block';
             // Force reflow before adding class
@@ -579,7 +507,6 @@ class SyncGallery {
     }
 
     hideUploadProgress() {
-        console.log('📤 Hiding upload progress');
         if (this.uploadProgress) {
             this.uploadProgress.classList.remove('show');
             // Hide after animation completes
@@ -590,8 +517,6 @@ class SyncGallery {
     }
 
     updateUploadProgress(text, percentage) {
-        console.log('📊 Updating progress:', text, percentage + '%');
-        
         if (this.progressDetails) {
             this.progressDetails.textContent = text;
         }
@@ -652,35 +577,22 @@ class SyncGallery {
 
     async loadImages() {
         try {
-            console.log('📸 [LOAD_IMAGES] Starting loadImages...');
-            console.log('📸 [LOAD_IMAGES] isUploading:', this.isUploading);
             this.updateSyncIndicator('images', 'loading');
             
-            console.log('📸 [LOAD_IMAGES] Calling fetchImages()...');
             const result = await fetchImages();
-            console.log('📸 [LOAD_IMAGES] fetchImages result:', result);
             
             if (result.success) {
                 this.images = result.images || [];
-                console.log('📸 [LOAD_IMAGES] Loaded images:', this.images.length, 'images');
-                this.images.forEach(img => {
-                    console.log('📸 [LOAD_IMAGES] Image:', img.filename, 'URL:', img.filepath);
-                });
                 this.updateSyncIndicator('images', 'synced');
             } else {
-                console.error('📸 [LOAD_IMAGES] fetchImages failed:', result.error);
                 throw new Error(result.error || 'Errore nel caricamento immagini');
             }
             
-            console.log('📸 [LOAD_IMAGES] Rendering thumbnails...');
             this.renderThumbnails();
-            console.log('📸 [LOAD_IMAGES] Updating image count...');
             this.updateImageCount();
-            console.log('📸 [LOAD_IMAGES] loadImages completed successfully');
 
         } catch (error) {
-            console.error('📸 [LOAD_IMAGES] Error loading images:', error);
-            console.error('📸 [LOAD_IMAGES] Error stack:', error.stack);
+            console.error('Error loading images:', error);
             this.updateStatus('Errore nel caricamento immagini', 'error');
             this.updateSyncIndicator('images', 'error');
         }
@@ -739,7 +651,6 @@ class SyncGallery {
         
         if (confirmed) {
             try {
-                console.log('🗑️ Starting delete process for:', image.filename);
                 // Pausa il polling durante l'eliminazione
                 this.stopPolling();
                 
@@ -805,9 +716,6 @@ class SyncGallery {
     }
 
     selectImage(filepath) {
-        console.log('=== selectImage START ===', filepath);
-        console.log('isSyncing flag:', this.isSyncing);
-
         // Reset hasImageLoaded flag when selecting a new image
         if (this.currentState.selectedImage !== filepath) {
             this.hasImageLoaded = false;
@@ -817,51 +725,40 @@ class SyncGallery {
 
         // NON resettare zoom e pan se stiamo sincronizzando
         if (!this.isSyncing) {
-            console.log('Resetting zoom and pan for new image');
             this.currentState.zoom = 1;
             this.currentState.pan = { x: 0, y: 0 };
-        } else {
-            console.log('NOT resetting zoom/pan - syncing from Firebase');
         }
 
         this.updateView();
 
         // Solo sincronizza se non stiamo già sincronizzando
         if (!this.isSyncing) {
-            console.log('Syncing state after image selection');
             this.syncState();
-        } else {
-            console.log('NOT syncing - already in sync mode');
         }
 
         if (!this.isSyncing) {
             this.showNotification('Immagine selezionata', 'info');
         }
-        console.log('=== selectImage END ===');
     }
 
     updateView() {
         if (this.currentState.selectedImage) {
-            console.log('🖼️ Loading image:', this.currentState.selectedImage);
             this.currentImage.src = this.currentState.selectedImage;
             this.currentImage.style.display = 'block';
             this.noImage.style.display = 'none';
 
             this.currentImage.onload = () => {
-                console.log('✅ Image loaded successfully');
                 if (!this.isSyncing && !this.hasImageLoaded) {
-                    console.log('Image loaded - calling fitImageToViewer (not syncing)');
                     this.fitImageToViewer();
                     this.hasImageLoaded = true;
                 } else {
-                    console.log('Image loaded - skipping fitImageToViewer (syncing from Firebase)');
                     this.calculateBaseScale();
                     this.updateImageTransform();
                 }
             };
 
             this.currentImage.onerror = () => {
-                console.error('❌ Failed to load image:', this.currentState.selectedImage);
+                console.error('Failed to load image:', this.currentState.selectedImage);
                 this.showNotification('Errore nel caricamento dell\'immagine', 'error');
                 // Try to reload images in case the URL changed
                 setTimeout(() => {
@@ -890,9 +787,7 @@ class SyncGallery {
     }
 
     calculateBaseScale() {
-        console.log('=== calculateBaseScale START ===');
         if (!this.currentImage.naturalWidth || !this.currentImage.naturalHeight) {
-            console.log('No natural dimensions available');
             return;
         }
 
@@ -901,15 +796,10 @@ class SyncGallery {
         const imageWidth = this.currentImage.naturalWidth;
         const imageHeight = this.currentImage.naturalHeight;
 
-        console.log('Viewer dimensions:', viewerWidth, 'x', viewerHeight);
-        console.log('Image natural dimensions:', imageWidth, 'x', imageHeight);
-
         const padding = 20;
         const scaleX = (viewerWidth - padding * 2) / imageWidth;
         const scaleY = (viewerHeight - padding * 2) / imageHeight;
         const baseScale = Math.min(scaleX, scaleY);
-
-        console.log('Calculated scales - X:', scaleX, 'Y:', scaleY, 'Base:', baseScale);
 
         this.baseScale = baseScale;
 
@@ -917,32 +807,21 @@ class SyncGallery {
         const finalHeight = imageHeight * baseScale;
         this.currentImage.style.width = finalWidth + 'px';
         this.currentImage.style.height = finalHeight + 'px';
-        console.log('Final image size:', finalWidth, 'x', finalHeight);
-        console.log('=== calculateBaseScale END ===');
     }
 
     fitImageToViewer() {
-        console.log('=== fitImageToViewer START ===');
         if (!this.currentImage.naturalWidth || !this.currentImage.naturalHeight) return;
 
         this.calculateBaseScale();
 
         if (!this.isSyncing && !this.hasImageLoaded) {
-            console.log('Resetting pan to center');
             this.currentState.pan = { x: 0, y: 0 };
-        } else {
-            console.log('NOT resetting pan - syncing from Firebase or image already loaded');
         }
         this.updateImageTransform();
-        console.log('=== fitImageToViewer END ===');
     }
 
     updateImageTransform() {
-        console.log('=== updateImageTransform START ===');
-        console.log('Current state:', JSON.stringify(this.currentState));
-
         if (!this.baseScale) {
-            console.log('No baseScale, centering image');
             this.currentImage.style.left = '50%';
             this.currentImage.style.top = '50%';
             this.currentImage.style.transform = 'translate(-50%, -50%)';
@@ -950,8 +829,6 @@ class SyncGallery {
         }
 
         const zoomScale = this.currentState.zoom;
-        console.log('Applying zoom scale:', zoomScale);
-        console.log('Applying pan:', this.currentState.pan);
 
         const transform = `
             translate(-50%, -50%) 
@@ -959,44 +836,33 @@ class SyncGallery {
             scale(${zoomScale})
         `;
 
-        console.log('Applied transform:', transform);
         this.currentImage.style.transform = transform;
         this.currentImage.style.left = '50%';
         this.currentImage.style.top = '50%';
-        console.log('=== updateImageTransform END ===');
     }
 
     zoomIn() {
-        console.log('=== zoomIn START ===');
         const oldZoom = this.currentState.zoom;
         this.currentState.zoom = Math.min(this.currentState.zoom * 1.2, 5);
-        console.log('Zoom changed from', oldZoom, 'to', this.currentState.zoom);
         this.updateView();
         this.syncState();
         this.showNotification(`Zoom: ${Math.round(this.currentState.zoom * 100)}%`, 'info');
-        console.log('=== zoomIn END ===');
     }
 
     zoomOut() {
-        console.log('=== zoomOut START ===');
         const oldZoom = this.currentState.zoom;
         this.currentState.zoom = Math.max(this.currentState.zoom / 1.2, 0.1);
-        console.log('Zoom changed from', oldZoom, 'to', this.currentState.zoom);
         this.updateView();
         this.syncState();
         this.showNotification(`Zoom: ${Math.round(this.currentState.zoom * 100)}%`, 'info');
-        console.log('=== zoomOut END ===');
     }
 
     resetView() {
-        console.log('=== resetView START ===');
         this.currentState.zoom = 1;
         this.currentState.pan = { x: 0, y: 0 };
-        console.log('Reset to zoom=1, pan=(0,0)');
         this.updateView();
         this.syncState();
         this.showNotification('Vista ripristinata', 'info');
-        console.log('=== resetView END ===');
     }
 
     handleWheel(e) {
@@ -1004,18 +870,13 @@ class SyncGallery {
 
         e.preventDefault();
 
-        console.log('=== handleWheel START ===');
         const oldZoom = this.currentState.zoom;
         const delta = e.deltaY < 0 ? 1.1 : 0.9;
         this.currentState.zoom = Math.min(Math.max(this.currentState.zoom * delta, 0.1), 5);
 
-        console.log('Wheel zoom from', oldZoom, 'to', this.currentState.zoom, 'delta:', delta);
-
         const rect = this.imageContainer.getBoundingClientRect();
         const mouseX = e.clientX - rect.left - rect.width / 2;
         const mouseY = e.clientY - rect.top - rect.height / 2;
-
-        console.log('Mouse position:', mouseX, mouseY);
 
         const zoomFactor = this.currentState.zoom / oldZoom;
         const oldPanX = this.currentState.pan.x;
@@ -1024,11 +885,8 @@ class SyncGallery {
         this.currentState.pan.x = mouseX - (mouseX - oldPanX) * zoomFactor;
         this.currentState.pan.y = mouseY - (mouseY - oldPanY) * zoomFactor;
 
-        console.log('Pan changed from', oldPanX, oldPanY, 'to', this.currentState.pan.x, this.currentState.pan.y);
-
         this.updateView();
         this.syncState();
-        console.log('=== handleWheel END ===');
     }
 
     handleKeyboard(e) {
@@ -1111,40 +969,27 @@ class SyncGallery {
     }
 
     async syncState() {
-        console.log('🔥 [SYNC_STATE] === syncState START ===');
-        console.log('🔥 [SYNC_STATE] Syncing state to Firebase:', JSON.stringify(this.currentState));
-        console.log('🔥 [SYNC_STATE] isUploading:', this.isUploading);
-        console.log('🔥 [SYNC_STATE] isSyncing:', this.isSyncing);
-
         // Non sincronizzare durante l'upload per evitare conflitti
         if (this.isUploading) {
-            console.log('🔥 [SYNC_STATE] Skipping sync during upload');
             return;
         }
 
         try {
-            console.log('🔥 [SYNC_STATE] Updating sync status to syncing...');
             this.updateSyncIndicator('firebase', 'syncing');
-            console.log('🔥 [SYNC_STATE] Calling updateGalleryState...');
             const result = await updateGalleryState(this.currentState);
-            console.log('🔥 [SYNC_STATE] updateGalleryState result:', result);
 
             if (result.success) {
-                console.log('🔥 [SYNC_STATE] State synced successfully to Firebase');
                 this.updateSyncIndicator('firebase', 'connected');
                 return { success: true };
             } else {
-                console.error('🔥 [SYNC_STATE] Firebase sync error:', result.error);
                 this.updateSyncIndicator('firebase', 'error');
                 return { success: false, error: result.error };
             }
         } catch (error) {
-            console.error('🔥 [SYNC_STATE] Network error:', error);
-            console.error('🔥 [SYNC_STATE] Error stack:', error.stack);
+            console.error('Network error during sync:', error);
             this.updateSyncIndicator('firebase', 'error');
             return { success: false, error: error.message };
         }
-        console.log('🔥 [SYNC_STATE] === syncState END ===');
     }
 
 
