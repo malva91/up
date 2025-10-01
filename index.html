@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Galleria SweetBlood</title>
-    <link rel="stylesheet" href="css/style.css?v.1.0">
+    <title>Galleria CaniDiOdino</title>
+    <link rel="stylesheet" href="css/style.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖼️</text></svg>">
 </head>
 <body>
@@ -14,7 +14,7 @@
             <div class="header-content">
                 <div class="app-title">
                     <span class="title-icon">🖼️</span>
-                    Galleria SweetBlood
+                    Galleria CaniDiOdino
                 </div>
                 
                 <!-- Color Palette in Header -->
@@ -106,41 +106,24 @@
                 <span id="statusText">Inizializzazione...</span>
             </div>
             <div class="status-right">
-                <div class="sync-info">
-                    <span id="syncStatus" class="sync-status">🔥 Connessione Firebase...</span>
-                    <div id="detailedSyncStatus" class="detailed-sync"></div>
-                </div>
+                <span id="syncStatus" class="sync-status">🔥 Connessione Firebase...</span>
             </div>
         </footer>
     </div>
 
-    <!-- Upload Progress Modal -->
-    <div class="upload-progress" id="uploadProgress" style="display: none;">
-        <div class="upload-progress-header">
-            <div class="upload-progress-spinner"></div>
-            <span class="upload-progress-text" id="progressText">Caricamento in corso...</span>
-        </div>
-        <div class="upload-progress-details" id="progressDetails">Preparazione file...</div>
-        <div class="upload-progress-bar-container">
-            <div class="upload-progress-bar-fill" id="progressBarFill"></div>
-        </div>
-        <div class="upload-progress-percentage" id="progressPercentage">0%</div>
-    </div>
-
-    <!-- Custom Modal for confirmations -->
-    <div class="custom-modal" id="customModal">
-        <div class="modal-content">
-            <span class="modal-icon" id="modalIcon">🗑️</span>
-            <h3 class="modal-title" id="modalTitle">Conferma eliminazione</h3>
-            <p class="modal-message" id="modalMessage">Sei sicuro di voler eliminare questa immagine?</p>
-            <div class="modal-buttons">
-                <button class="modal-btn modal-btn-secondary" id="modalCancel">Annulla</button>
-                <button class="modal-btn modal-btn-primary" id="modalConfirm">Elimina</button>
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <h3>Caricamento in corso...</h3>
+            <p id="loadingText">Preparazione file...</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
             </div>
         </div>
     </div>
 
-    <script type="module" src="./js/app.js?v1.0"></script>
+    <script type="module" src="./js/app.js"></script>
 
 </body>
 </html>
