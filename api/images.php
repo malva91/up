@@ -14,11 +14,11 @@ try {
         throw new Exception('Errore connessione database');
     }
     
-    // Get all images ordered by upload time (newest first)
     $stmt = $pdo->prepare("
         SELECT id, filename, original_name, filepath, file_size, mime_type, upload_time, created_at
-        FROM images 
+        FROM images
         ORDER BY upload_time DESC
+        LIMIT 500
     ");
     
     $stmt->execute();
@@ -29,16 +29,28 @@ try {
     $baseUrl = getBaseUrl();
     
     foreach ($images as $image) {
-        $formattedImages[] = [
-            'id' => (string)$image['id'],
-            'filename' => $image['original_name'],
-            'filepath' => $baseUrl . '/uploads/' . basename($image['filepath']),
-            'storageRef' => $image['filepath'],
-            'uploadTime' => (int)$image['upload_time'],
-            'fileSize' => (int)$image['file_size'],
-            'mimeType' => $image['mime_type'],
-            'createdAt' => $image['created_at']
-        ];
+        try {
+            $safeFilename = validateFilePath($image['filepath']);
+            $fullPath = UPLOAD_DIR . $safeFilename;
+
+            if (!file_exists($fullPath)) {
+                continue;
+            }
+
+            $formattedImages[] = [
+                'id' => (string)$image['id'],
+                'filename' => htmlspecialchars($image['original_name'], ENT_QUOTES, 'UTF-8'),
+                'filepath' => $baseUrl . '/uploads/' . urlencode($safeFilename),
+                'storageRef' => $image['filepath'],
+                'uploadTime' => (int)$image['upload_time'],
+                'fileSize' => (int)$image['file_size'],
+                'mimeType' => $image['mime_type'],
+                'createdAt' => $image['created_at']
+            ];
+        } catch (Exception $e) {
+            error_log("Image validation error: " . $e->getMessage());
+            continue;
+        }
     }
     
     echo json_encode([
@@ -52,7 +64,7 @@ try {
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'error' => $e->getMessage()
+        'error' => 'Errore nel recupero immagini'
     ]);
 }
 ?>

@@ -1,23 +1,47 @@
-# Allow access to image files
-<Files ~ "\.(jpg|jpeg|png|gif)$">
+# Prevent directory listing
+Options -Indexes
+
+# Prevent access to all files by default
+<FilesMatch ".*">
+    Order deny,allow
+    Deny from all
+</FilesMatch>
+
+# Allow only images
+<FilesMatch "\.(jpg|jpeg|png|gif)$">
     Order allow,deny
     Allow from all
-</Files>
+</FilesMatch>
 
-# Prevent access to other file types
-<Files ~ "^.*$">
+# Block executable files
+<FilesMatch "\.(php|php3|php4|php5|phtml|pl|py|jsp|asp|sh|cgi)$">
+    Order deny,allow
+    Deny from all
+</FilesMatch>
+
+# Prevent .htaccess access
+<Files ".htaccess">
     Order deny,allow
     Deny from all
 </Files>
 
-<Files ~ "\.(jpg|jpeg|png|gif)$">
-    Order allow,deny
-    Allow from all
-</Files>
-
-# Enable CORS for images
+# Enable CORS
 <IfModule mod_headers.c>
     Header set Access-Control-Allow-Origin "*"
     Header set Access-Control-Allow-Methods "GET, OPTIONS"
-    Header set Access-Control-Allow-Headers "Content-Type"
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "DENY"
+</IfModule>
+
+# Disable PHP execution
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+
+# Force download of unknown file types
+<IfModule mod_mime.c>
+    ForceType application/octet-stream
+    <FilesMatch "\.(jpg|jpeg|png|gif)$">
+        ForceType none
+    </FilesMatch>
 </IfModule>

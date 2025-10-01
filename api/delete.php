@@ -9,14 +9,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'DELETE') {
 }
 
 try {
-    // Get JSON input
     $input = json_decode(file_get_contents('php://input'), true);
-    
-    if (!isset($input['id']) || empty($input['id'])) {
-        throw new Exception('ID immagine richiesto');
+
+    if (!isset($input['id'])) {
+        throw new Exception('ID richiesto');
     }
-    
-    $imageId = (int)$input['id'];
+
+    $imageId = sanitizeImageId($input['id']);
     
     $pdo = getDatabase();
     if (!$pdo) {
@@ -40,10 +39,17 @@ try {
         throw new Exception('Errore durante l\'eliminazione dal database');
     }
     
-    // Delete physical file
-    $fullPath = UPLOAD_DIR . basename($image['filepath']);
-    if (file_exists($fullPath)) {
-        unlink($fullPath);
+    try {
+        $safeFilename = validateFilePath($image['filepath']);
+        $fullPath = UPLOAD_DIR . $safeFilename;
+
+        if (file_exists($fullPath) && is_file($fullPath)) {
+            if (!unlink($fullPath)) {
+                error_log("Failed to delete file: $fullPath");
+            }
+        }
+    } catch (Exception $e) {
+        error_log("File deletion error: " . $e->getMessage());
     }
     
     echo json_encode([
@@ -56,7 +62,7 @@ try {
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'error' => $e->getMessage()
+        'error' => 'Errore durante l\'eliminazione'
     ]);
 }
 ?>

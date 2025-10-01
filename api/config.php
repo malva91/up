@@ -1,8 +1,14 @@
 <?php
-header('Content-Type: application/json');
+error_reporting(0);
+ini_set('display_errors', 0);
+
+header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, X-Requested-With');
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('X-XSS-Protection: 1; mode=block');
 
 // Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -12,9 +18,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Database configuration
 define('DB_PATH', __DIR__ . '/gallery.db');
-define('UPLOAD_DIR', __DIR__ . '/../uploads/');
-define('MAX_FILE_SIZE', 15 * 1024 * 1024); // 15MB
+define('UPLOAD_DIR', realpath(__DIR__ . '/../uploads/') . '/');
+define('MAX_FILE_SIZE', 15 * 1024 * 1024);
 define('ALLOWED_TYPES', ['image/jpeg', 'image/jpg', 'image/png', 'image/gif']);
+define('ALLOWED_EXTENSIONS', ['jpg', 'jpeg', 'png', 'gif']);
 
 // Create uploads directory if it doesn't exist
 if (!file_exists(UPLOAD_DIR)) {
@@ -60,36 +67,84 @@ function getDatabase() {
 // Validate uploaded file
 function validateFile($file) {
     $errors = [];
-    
-    // Check for upload errors
-    if ($file['error'] !== UPLOAD_ERR_OK) {
-        $errors[] = 'Errore durante il caricamento del file';
+
+    if (!isset($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+        $errors[] = 'File non valido';
         return $errors;
     }
-    
-    // Check file size
-    if ($file['size'] > MAX_FILE_SIZE) {
-        $errors[] = 'File troppo grande. Massimo 15MB';
+
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        $errors[] = 'Errore durante il caricamento';
+        return $errors;
     }
-    
-    // Check file type
+
+    if ($file['size'] <= 0 || $file['size'] > MAX_FILE_SIZE) {
+        $errors[] = 'Dimensione file non valida';
+        return $errors;
+    }
+
+    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($extension, ALLOWED_EXTENSIONS)) {
+        $errors[] = 'Estensione non supportata';
+        return $errors;
+    }
+
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    if (!$finfo) {
+        $errors[] = 'Impossibile verificare il file';
+        return $errors;
+    }
+
     $mimeType = finfo_file($finfo, $file['tmp_name']);
     finfo_close($finfo);
-    
+
     if (!in_array($mimeType, ALLOWED_TYPES)) {
-        $errors[] = 'Formato file non supportato. Usa JPG, PNG o GIF';
+        $errors[] = 'Tipo file non supportato';
+        return $errors;
     }
-    
+
+    $imageInfo = @getimagesize($file['tmp_name']);
+    if ($imageInfo === false) {
+        $errors[] = 'File non è un\'immagine valida';
+        return $errors;
+    }
+
+    if ($imageInfo[0] > 10000 || $imageInfo[1] > 10000) {
+        $errors[] = 'Dimensioni immagine eccessive';
+        return $errors;
+    }
+
     return $errors;
 }
 
 // Generate unique filename
 function generateFilename($originalName) {
-    $extension = pathinfo($originalName, PATHINFO_EXTENSION);
+    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+    if (!in_array($extension, ALLOWED_EXTENSIONS)) {
+        $extension = 'jpg';
+    }
     $timestamp = time();
-    $random = bin2hex(random_bytes(8));
+    $random = bin2hex(random_bytes(16));
     return $timestamp . '_' . $random . '.' . $extension;
+}
+
+function sanitizeImageId($id) {
+    $id = filter_var($id, FILTER_VALIDATE_INT);
+    if ($id === false || $id <= 0) {
+        throw new Exception('ID non valido');
+    }
+    return $id;
+}
+
+function validateFilePath($filepath) {
+    $realUploadDir = realpath(UPLOAD_DIR);
+    $realFilePath = realpath(dirname(UPLOAD_DIR . $filepath)) . '/' . basename($filepath);
+
+    if (strpos($realFilePath, $realUploadDir) !== 0) {
+        throw new Exception('Percorso non valido');
+    }
+
+    return basename($filepath);
 }
 
 // Get base URL for file access

@@ -55,11 +55,26 @@ const stateRef  = ref(database, 'galleryCani/state');
  */
 async function updateGalleryState(state) {
   try {
-    await set(stateRef, { ...state, updatedAt: serverTimestamp() });
+    if (!state || typeof state !== 'object') {
+      throw new Error('Invalid state');
+    }
+
+    const sanitizedState = {
+      selectedImage: String(state.selectedImage || ''),
+      zoom: Math.max(0.1, Math.min(5, Number(state.zoom) || 1)),
+      pan: {
+        x: Number(state.pan?.x) || 0,
+        y: Number(state.pan?.y) || 0
+      },
+      backgroundColor: String(state.backgroundColor || '#0000ff'),
+      updatedAt: serverTimestamp()
+    };
+
+    await set(stateRef, sanitizedState);
     return { success: true };
   } catch (err) {
     console.error('Error updating state:', err);
-    return { success: false, error: err.message };
+    return { success: false, error: 'Sync failed' };
   }
 }
 
@@ -69,17 +84,33 @@ async function updateGalleryState(state) {
  */
 async function uploadImages(files) {
   try {
+    if (!files || files.length === 0) {
+      throw new Error('No files');
+    }
+
+    if (files.length > 20) {
+      throw new Error('Too many files');
+    }
+
     const formData = new FormData();
-    
-    // Add all files to FormData
+
     for (let i = 0; i < files.length; i++) {
+      if (files[i].size > 15 * 1024 * 1024) {
+        throw new Error('File too large');
+      }
       formData.append('images[]', files[i]);
     }
-    
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
     const response = await fetch('./api/upload.php', {
       method: 'POST',
-      body: formData
+      body: formData,
+      signal: controller.signal
     });
+
+    clearTimeout(timeout);
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -98,17 +129,32 @@ async function uploadImages(files) {
  */
 async function fetchImages() {
   try {
-    const response = await fetch('./api/images.php');
-    
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch('./api/images.php', {
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`HTTP ${response.status}`);
     }
-    
+
     const result = await response.json();
+
+    if (!result || typeof result !== 'object') {
+      throw new Error('Invalid response');
+    }
+
     return result;
   } catch (err) {
+    if (err.name === 'AbortError') {
+      return { success: false, error: 'Timeout' };
+    }
     console.error('Error fetching images:', err);
-    return { success: false, error: err.message };
+    return { success: false, error: 'Fetch failed' };
   }
 }
 
@@ -118,13 +164,23 @@ async function fetchImages() {
  */
 async function deleteImage(imageId) {
   try {
+    if (!imageId || isNaN(parseInt(imageId))) {
+      throw new Error('Invalid ID');
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
     const response = await fetch('./api/delete.php', {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ id: imageId })
+      body: JSON.stringify({ id: parseInt(imageId) }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeout);
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);

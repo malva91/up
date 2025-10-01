@@ -9,8 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 try {
-    // Check if files were uploaded
-    if (!isset($_FILES['images']) || empty($_FILES['images']['name'][0])) {
+    if (!isset($_FILES['images']) || !is_array($_FILES['images']['name']) || empty($_FILES['images']['name'][0])) {
         throw new Exception('Nessun file caricato');
     }
     
@@ -22,9 +21,12 @@ try {
     $uploadedFiles = [];
     $errors = [];
     
-    // Handle multiple files
     $fileCount = count($_FILES['images']['name']);
-    
+
+    if ($fileCount > 20) {
+        throw new Exception('Troppi file. Massimo 20 per volta');
+    }
+
     for ($i = 0; $i < $fileCount; $i++) {
         $file = [
             'name' => $_FILES['images']['name'][$i],
@@ -46,15 +48,15 @@ try {
             continue;
         }
         
-        // Generate unique filename
         $filename = generateFilename($file['name']);
         $filepath = UPLOAD_DIR . $filename;
-        
-        // Move uploaded file
+
         if (!move_uploaded_file($file['tmp_name'], $filepath)) {
-            $errors[] = $file['name'] . ': Errore durante il salvataggio';
+            $errors[] = $file['name'] . ': Errore salvataggio';
             continue;
         }
+
+        chmod($filepath, 0644);
         
         // Get file info
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
@@ -106,7 +108,7 @@ try {
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'error' => $e->getMessage()
+        'error' => 'Errore durante il caricamento'
     ]);
 }
 ?>

@@ -72,30 +72,36 @@ class SyncGallery {
     }
 
     handleStateUpdate(newState) {
-        console.log('=== handleStateUpdate START ===');
-        console.log('Received new state:', JSON.stringify(newState));
-        console.log('Current state:', JSON.stringify(this.currentState));
+        if (!newState || typeof newState !== 'object') {
+            console.warn('Invalid state received');
+            return;
+        }
 
-        // Convert Firebase state format to our format
         const formattedState = {
-            selectedImage: newState.selectedImage || '',
-            zoom: newState.zoom || 1,
-            pan: newState.pan || { x: 0, y: 0 },
-            backgroundColor: newState.backgroundColor || '#0000ff'
+            selectedImage: String(newState.selectedImage || ''),
+            zoom: Math.max(0.1, Math.min(5, Number(newState.zoom) || 1)),
+            pan: {
+                x: Number(newState.pan?.x) || 0,
+                y: Number(newState.pan?.y) || 0
+            },
+            backgroundColor: String(newState.backgroundColor || '#0000ff')
         };
 
         const stateChanged = JSON.stringify(formattedState) !== JSON.stringify(this.currentState);
-        console.log('State changed:', stateChanged, 'isDragging:', this.isDragging);
 
-        if (stateChanged && !this.isDragging) {
-            console.log('Applying new state from Firebase');
+        if (stateChanged && !this.isDragging && !this.isUploading) {
             this.isSyncing = true;
-            this.currentState = formattedState;
-            this.updateView();
-            this.isSyncing = false;
-            this.updateSyncStatus('success');
+            try {
+                this.currentState = formattedState;
+                this.updateView();
+                this.updateSyncStatus('success');
+            } catch (err) {
+                console.error('Error updating view:', err);
+                this.updateSyncStatus('error');
+            } finally {
+                this.isSyncing = false;
+            }
         }
-        console.log('=== handleStateUpdate END ===');
     }
 
     setupElements() {
@@ -183,8 +189,21 @@ class SyncGallery {
     async handleFiles(files) {
         if (this.isUploading) return;
 
+        if (!files || files.length === 0) {
+            this.showNotification('Nessun file selezionato', 'error');
+            return;
+        }
+
+        if (files.length > 20) {
+            this.showNotification('Massimo 20 file per volta', 'error');
+            return;
+        }
+
         const validFiles = Array.from(files).filter(file => this.isValidImage(file));
-        if (validFiles.length === 0) return;
+        if (validFiles.length === 0) {
+            this.showNotification('Nessun file valido selezionato', 'error');
+            return;
+        }
 
         this.isUploading = true;
         this.showLoadingOverlay();
@@ -227,15 +246,32 @@ class SyncGallery {
 
     isValidImage(file) {
         const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-        const maxSize = 15 * 1024 * 1024; // 15MB
+        const validExtensions = ['jpg', 'jpeg', 'png', 'gif'];
+        const maxSize = 15 * 1024 * 1024;
 
-        if (!validTypes.includes(file.type)) {
-            this.showNotification('Formato non supportato. Usa JPG, PNG o GIF.', 'error');
+        if (!file || !file.name || !file.type || !file.size) {
+            this.showNotification('File non valido', 'error');
             return false;
         }
 
-        if (file.size > maxSize) {
-            this.showNotification('File troppo grande. Massimo 15MB.', 'error');
+        const extension = file.name.split('.').pop().toLowerCase();
+        if (!validExtensions.includes(extension)) {
+            this.showNotification(`Estensione ${extension} non supportata`, 'error');
+            return false;
+        }
+
+        if (!validTypes.includes(file.type)) {
+            this.showNotification('Tipo file non supportato', 'error');
+            return false;
+        }
+
+        if (file.size <= 0 || file.size > maxSize) {
+            this.showNotification('Dimensione file non valida', 'error');
+            return false;
+        }
+
+        if (file.name.length > 255) {
+            this.showNotification('Nome file troppo lungo', 'error');
             return false;
         }
 
@@ -361,187 +397,186 @@ class SyncGallery {
     }
 
     selectImage(filepath) {
-        console.log('=== selectImage START ===', filepath);
-        console.log('isSyncing flag:', this.isSyncing);
+        if (!filepath || typeof filepath !== 'string') {
+            console.warn('Invalid filepath');
+            return;
+        }
 
-        // Reset hasImageLoaded flag when selecting a new image
         if (this.currentState.selectedImage !== filepath) {
             this.hasImageLoaded = false;
         }
 
         this.currentState.selectedImage = filepath;
 
-        // NON resettare zoom e pan se stiamo sincronizzando
         if (!this.isSyncing) {
-            console.log('Resetting zoom and pan for new image');
             this.currentState.zoom = 1;
             this.currentState.pan = { x: 0, y: 0 };
-        } else {
-            console.log('NOT resetting zoom/pan - syncing from Firebase');
         }
 
-        this.updateView();
-
-        // Solo sincronizza se non stiamo già sincronizzando
-        if (!this.isSyncing) {
-            console.log('Syncing state after image selection');
-            this.syncState();
-        } else {
-            console.log('NOT syncing - already in sync mode');
-        }
-
-        if (!this.isSyncing) {
-            this.showNotification('Immagine selezionata', 'info');
-        }
-        console.log('=== selectImage END ===');
-    }
-
-    updateView() {
-        if (this.currentState.selectedImage) {
-            this.currentImage.src = this.currentState.selectedImage;
-            this.currentImage.style.display = 'block';
-            this.noImage.style.display = 'none';
-
-            this.currentImage.onload = () => {
-                if (!this.isSyncing && !this.hasImageLoaded) {
-                    console.log('Image loaded - calling fitImageToViewer (not syncing)');
-                    this.fitImageToViewer();
-                    this.hasImageLoaded = true;
-                } else {
-                    console.log('Image loaded - skipping fitImageToViewer (syncing from Firebase)');
-                    this.calculateBaseScale();
-                    this.updateImageTransform();
-                }
-            };
-
-            this.updateImageTransform();
-        } else {
-            this.currentImage.style.display = 'none';
-            this.noImage.style.display = 'flex';
-        }
-
-        this.imageViewer.style.backgroundColor = this.currentState.backgroundColor;
-
-        document.querySelectorAll('.color-option').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.color === this.currentState.backgroundColor);
-        });
-
-        document.querySelectorAll('.thumbnail').forEach((thumb, index) => {
-            const isActive = this.images[index] && this.images[index].filepath === this.currentState.selectedImage;
-            thumb.classList.toggle('active', isActive);
-        });
-
-        this.zoomInfo.textContent = Math.round(this.currentState.zoom * 100) + '%';
-    }
-
-    calculateBaseScale() {
-        console.log('=== calculateBaseScale START ===');
-        if (!this.currentImage.naturalWidth || !this.currentImage.naturalHeight) {
-            console.log('No natural dimensions available');
+        try {
+            this.updateView();
+        } catch (err) {
+            console.error('Error updating view:', err);
             return;
         }
 
-        const viewerWidth = this.imageViewer.clientWidth;
-        const viewerHeight = this.imageViewer.clientHeight;
+        if (!this.isSyncing) {
+            this.syncState();
+            this.showNotification('Immagine selezionata', 'info');
+        }
+    }
+
+    updateView() {
+        try {
+            if (this.currentState.selectedImage) {
+                const sanitizedSrc = this.currentState.selectedImage.replace(/[<>"']/g, '');
+                this.currentImage.src = sanitizedSrc;
+                this.currentImage.style.display = 'block';
+                this.noImage.style.display = 'none';
+
+                this.currentImage.onerror = () => {
+                    console.error('Image load error');
+                    this.currentImage.style.display = 'none';
+                    this.noImage.style.display = 'flex';
+                };
+
+                this.currentImage.onload = () => {
+                    try {
+                        if (!this.isSyncing && !this.hasImageLoaded) {
+                            this.fitImageToViewer();
+                            this.hasImageLoaded = true;
+                        } else {
+                            this.calculateBaseScale();
+                            this.updateImageTransform();
+                        }
+                    } catch (err) {
+                        console.error('Error in image onload:', err);
+                    }
+                };
+
+                this.updateImageTransform();
+            } else {
+                this.currentImage.style.display = 'none';
+                this.noImage.style.display = 'flex';
+            }
+
+            const validColors = ['#00ff00', '#ff00ff', '#0000ff', '#ff0000', '#00ffff', '#ffff00', '#ffffff', '#000000', '#808080'];
+            const bgColor = validColors.includes(this.currentState.backgroundColor) ? this.currentState.backgroundColor : '#0000ff';
+            this.imageViewer.style.backgroundColor = bgColor;
+
+            document.querySelectorAll('.color-option').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.color === bgColor);
+            });
+
+            document.querySelectorAll('.thumbnail').forEach((thumb, index) => {
+                const isActive = this.images[index] && this.images[index].filepath === this.currentState.selectedImage;
+                thumb.classList.toggle('active', isActive);
+            });
+
+            const zoomPercent = Math.max(10, Math.min(500, Math.round(this.currentState.zoom * 100)));
+            this.zoomInfo.textContent = zoomPercent + '%';
+        } catch (err) {
+            console.error('Error in updateView:', err);
+        }
+    }
+
+    calculateBaseScale() {
+        if (!this.currentImage.naturalWidth || !this.currentImage.naturalHeight) {
+            return;
+        }
+
+        const viewerWidth = this.imageViewer.clientWidth || 800;
+        const viewerHeight = this.imageViewer.clientHeight || 600;
         const imageWidth = this.currentImage.naturalWidth;
         const imageHeight = this.currentImage.naturalHeight;
 
-        console.log('Viewer dimensions:', viewerWidth, 'x', viewerHeight);
-        console.log('Image natural dimensions:', imageWidth, 'x', imageHeight);
+        if (imageWidth <= 0 || imageHeight <= 0) {
+            return;
+        }
 
         const padding = 20;
         const scaleX = (viewerWidth - padding * 2) / imageWidth;
         const scaleY = (viewerHeight - padding * 2) / imageHeight;
-        const baseScale = Math.min(scaleX, scaleY);
-
-        console.log('Calculated scales - X:', scaleX, 'Y:', scaleY, 'Base:', baseScale);
+        const baseScale = Math.max(0.01, Math.min(scaleX, scaleY, 5));
 
         this.baseScale = baseScale;
 
-        const finalWidth = imageWidth * baseScale;
-        const finalHeight = imageHeight * baseScale;
+        const finalWidth = Math.max(10, imageWidth * baseScale);
+        const finalHeight = Math.max(10, imageHeight * baseScale);
         this.currentImage.style.width = finalWidth + 'px';
         this.currentImage.style.height = finalHeight + 'px';
-        console.log('Final image size:', finalWidth, 'x', finalHeight);
-        console.log('=== calculateBaseScale END ===');
     }
 
     fitImageToViewer() {
-        console.log('=== fitImageToViewer START ===');
         if (!this.currentImage.naturalWidth || !this.currentImage.naturalHeight) return;
 
-        this.calculateBaseScale();
+        try {
+            this.calculateBaseScale();
 
-        if (!this.isSyncing && !this.hasImageLoaded) {
-            console.log('Resetting pan to center');
-            this.currentState.pan = { x: 0, y: 0 };
-        } else {
-            console.log('NOT resetting pan - syncing from Firebase or image already loaded');
+            if (!this.isSyncing && !this.hasImageLoaded) {
+                this.currentState.pan = { x: 0, y: 0 };
+            }
+            this.updateImageTransform();
+        } catch (err) {
+            console.error('Error fitting image:', err);
         }
-        this.updateImageTransform();
-        console.log('=== fitImageToViewer END ===');
     }
 
     updateImageTransform() {
-        console.log('=== updateImageTransform START ===');
-        console.log('Current state:', JSON.stringify(this.currentState));
+        try {
+            if (!this.baseScale) {
+                this.currentImage.style.left = '50%';
+                this.currentImage.style.top = '50%';
+                this.currentImage.style.transform = 'translate(-50%, -50%)';
+                return;
+            }
 
-        if (!this.baseScale) {
-            console.log('No baseScale, centering image');
+            const zoomScale = Math.max(0.1, Math.min(5, this.currentState.zoom));
+            const panX = Math.max(-5000, Math.min(5000, this.currentState.pan.x));
+            const panY = Math.max(-5000, Math.min(5000, this.currentState.pan.y));
+
+            const transform = `translate(-50%, -50%) translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+
+            this.currentImage.style.transform = transform;
             this.currentImage.style.left = '50%';
             this.currentImage.style.top = '50%';
-            this.currentImage.style.transform = 'translate(-50%, -50%)';
-            return;
+        } catch (err) {
+            console.error('Error in transform:', err);
         }
-
-        const zoomScale = this.currentState.zoom;
-        console.log('Applying zoom scale:', zoomScale);
-        console.log('Applying pan:', this.currentState.pan);
-
-        const transform = `
-            translate(-50%, -50%) 
-            translate(${this.currentState.pan.x}px, ${this.currentState.pan.y}px) 
-            scale(${zoomScale})
-        `;
-
-        console.log('Applied transform:', transform);
-        this.currentImage.style.transform = transform;
-        this.currentImage.style.left = '50%';
-        this.currentImage.style.top = '50%';
-        console.log('=== updateImageTransform END ===');
     }
 
     zoomIn() {
-        console.log('=== zoomIn START ===');
-        const oldZoom = this.currentState.zoom;
-        this.currentState.zoom = Math.min(this.currentState.zoom * 1.2, 5);
-        console.log('Zoom changed from', oldZoom, 'to', this.currentState.zoom);
-        this.updateView();
-        this.syncState();
-        this.showNotification(`Zoom: ${Math.round(this.currentState.zoom * 100)}%`, 'info');
-        console.log('=== zoomIn END ===');
+        try {
+            this.currentState.zoom = Math.min(this.currentState.zoom * 1.2, 5);
+            this.updateView();
+            this.syncState();
+            this.showNotification(`Zoom: ${Math.round(this.currentState.zoom * 100)}%`, 'info');
+        } catch (err) {
+            console.error('Zoom in error:', err);
+        }
     }
 
     zoomOut() {
-        console.log('=== zoomOut START ===');
-        const oldZoom = this.currentState.zoom;
-        this.currentState.zoom = Math.max(this.currentState.zoom / 1.2, 0.1);
-        console.log('Zoom changed from', oldZoom, 'to', this.currentState.zoom);
-        this.updateView();
-        this.syncState();
-        this.showNotification(`Zoom: ${Math.round(this.currentState.zoom * 100)}%`, 'info');
-        console.log('=== zoomOut END ===');
+        try {
+            this.currentState.zoom = Math.max(this.currentState.zoom / 1.2, 0.1);
+            this.updateView();
+            this.syncState();
+            this.showNotification(`Zoom: ${Math.round(this.currentState.zoom * 100)}%`, 'info');
+        } catch (err) {
+            console.error('Zoom out error:', err);
+        }
     }
 
     resetView() {
-        console.log('=== resetView START ===');
-        this.currentState.zoom = 1;
-        this.currentState.pan = { x: 0, y: 0 };
-        console.log('Reset to zoom=1, pan=(0,0)');
-        this.updateView();
-        this.syncState();
-        this.showNotification('Vista ripristinata', 'info');
-        console.log('=== resetView END ===');
+        try {
+            this.currentState.zoom = 1;
+            this.currentState.pan = { x: 0, y: 0 };
+            this.updateView();
+            this.syncState();
+            this.showNotification('Vista ripristinata', 'info');
+        } catch (err) {
+            console.error('Reset view error:', err);
+        }
     }
 
     handleWheel(e) {
@@ -549,31 +584,27 @@ class SyncGallery {
 
         e.preventDefault();
 
-        console.log('=== handleWheel START ===');
-        const oldZoom = this.currentState.zoom;
-        const delta = e.deltaY < 0 ? 1.1 : 0.9;
-        this.currentState.zoom = Math.min(Math.max(this.currentState.zoom * delta, 0.1), 5);
+        try {
+            const oldZoom = this.currentState.zoom;
+            const delta = e.deltaY < 0 ? 1.1 : 0.9;
+            this.currentState.zoom = Math.min(Math.max(this.currentState.zoom * delta, 0.1), 5);
 
-        console.log('Wheel zoom from', oldZoom, 'to', this.currentState.zoom, 'delta:', delta);
+            const rect = this.imageContainer.getBoundingClientRect();
+            const mouseX = Math.max(-5000, Math.min(5000, e.clientX - rect.left - rect.width / 2));
+            const mouseY = Math.max(-5000, Math.min(5000, e.clientY - rect.top - rect.height / 2));
 
-        const rect = this.imageContainer.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left - rect.width / 2;
-        const mouseY = e.clientY - rect.top - rect.height / 2;
+            const zoomFactor = this.currentState.zoom / oldZoom;
+            const oldPanX = this.currentState.pan.x;
+            const oldPanY = this.currentState.pan.y;
 
-        console.log('Mouse position:', mouseX, mouseY);
+            this.currentState.pan.x = Math.max(-5000, Math.min(5000, mouseX - (mouseX - oldPanX) * zoomFactor));
+            this.currentState.pan.y = Math.max(-5000, Math.min(5000, mouseY - (mouseY - oldPanY) * zoomFactor));
 
-        const zoomFactor = this.currentState.zoom / oldZoom;
-        const oldPanX = this.currentState.pan.x;
-        const oldPanY = this.currentState.pan.y;
-
-        this.currentState.pan.x = mouseX - (mouseX - oldPanX) * zoomFactor;
-        this.currentState.pan.y = mouseY - (mouseY - oldPanY) * zoomFactor;
-
-        console.log('Pan changed from', oldPanX, oldPanY, 'to', this.currentState.pan.x, this.currentState.pan.y);
-
-        this.updateView();
-        this.syncState();
-        console.log('=== handleWheel END ===');
+            this.updateView();
+            this.syncState();
+        } catch (err) {
+            console.error('Wheel zoom error:', err);
+        }
     }
 
     handleKeyboard(e) {
@@ -620,60 +651,80 @@ class SyncGallery {
     }
 
     startPan(e) {
-        if (this.currentState.selectedImage && e.button === 0) {
-            this.isDragging = true;
-            this.dragStart = {
-                x: e.clientX - this.currentState.pan.x,
-                y: e.clientY - this.currentState.pan.y
-            };
-            this.imageContainer.style.cursor = 'grabbing';
+        try {
+            if (this.currentState.selectedImage && e.button === 0) {
+                this.isDragging = true;
+                this.dragStart = {
+                    x: e.clientX - this.currentState.pan.x,
+                    y: e.clientY - this.currentState.pan.y
+                };
+                this.imageContainer.style.cursor = 'grabbing';
+            }
+        } catch (err) {
+            console.error('Start pan error:', err);
         }
     }
 
     handlePan(e) {
-        if (this.isDragging) {
-            this.currentState.pan = {
-                x: e.clientX - this.dragStart.x,
-                y: e.clientY - this.dragStart.y
-            };
-            this.updateImageTransform();
+        try {
+            if (this.isDragging) {
+                this.currentState.pan = {
+                    x: Math.max(-5000, Math.min(5000, e.clientX - this.dragStart.x)),
+                    y: Math.max(-5000, Math.min(5000, e.clientY - this.dragStart.y))
+                };
+                this.updateImageTransform();
+            }
+        } catch (err) {
+            console.error('Handle pan error:', err);
         }
     }
 
     endPan() {
-        if (this.isDragging) {
-            this.isDragging = false;
-            this.imageContainer.style.cursor = 'grab';
-            this.syncState();
+        try {
+            if (this.isDragging) {
+                this.isDragging = false;
+                this.imageContainer.style.cursor = 'grab';
+                this.syncState();
+            }
+        } catch (err) {
+            console.error('End pan error:', err);
         }
     }
 
     changeBackgroundColor(color) {
-        this.currentState.backgroundColor = color;
-        this.updateView();
-        this.syncState();
-        this.showNotification('Colore sfondo cambiato', 'info');
+        try {
+            const validColors = ['#00ff00', '#ff00ff', '#0000ff', '#ff0000', '#00ffff', '#ffff00', '#ffffff', '#000000', '#808080'];
+            if (validColors.includes(color)) {
+                this.currentState.backgroundColor = color;
+                this.updateView();
+                this.syncState();
+                this.showNotification('Colore sfondo cambiato', 'info');
+            }
+        } catch (err) {
+            console.error('Change color error:', err);
+        }
     }
 
     async syncState() {
-        console.log('=== syncState START ===');
-        console.log('Syncing state to Firebase:', JSON.stringify(this.currentState));
+        if (this.isSyncing || this.isDragging) {
+            return;
+        }
 
         try {
+            this.updateSyncStatus('syncing');
+
             const result = await updateGalleryState(this.currentState);
 
             if (result.success) {
-                console.log('State synced successfully to Firebase');
                 this.updateSyncStatus('success');
             } else {
-                console.error('Firebase sync error:', result.error);
+                console.error('Sync error:', result.error);
                 this.updateSyncStatus('error');
             }
         } catch (error) {
-            console.error('Network error:', error);
+            console.error('Sync exception:', error);
             this.updateSyncStatus('error');
         }
-        console.log('=== syncState END ===');
     }
 
     updateSyncStatus(status) {
@@ -726,9 +777,13 @@ class SyncGallery {
     }
 
     showNotification(message, type = 'info') {
+        if (!message || typeof message !== 'string') {
+            return;
+        }
+
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
-        notification.textContent = message;
+        notification.textContent = message.substring(0, 200);}
 
         Object.assign(notification.style, {
             position: 'fixed',
@@ -776,15 +831,32 @@ class SyncGallery {
     }
 
     destroy() {
-        // Remove Firebase listeners
         if (this.stateListener) {
-            this.stateListener();
+            try {
+                this.stateListener();
+            } catch (err) {
+                console.error('Error removing listener:', err);
+            }
         }
 
-        // Remove DOM event listeners
-        document.removeEventListener('mousemove', this.handlePan);
-        document.removeEventListener('mouseup', this.endPan);
-        document.removeEventListener('keydown', this.handleKeyboard);
+        this.isDragging = false;
+        this.isUploading = false;
+        this.isSyncing = false;
+
+        if (this.currentImage) {
+            this.currentImage.onload = null;
+            this.currentImage.onerror = null;
+        }
+
+        try {
+            document.removeEventListener('mousemove', this.handlePan);
+            document.removeEventListener('mouseup', this.endPan);
+            document.removeEventListener('keydown', this.handleKeyboard);
+            document.removeEventListener('dragover', this.preventDrag);
+            document.removeEventListener('drop', this.preventDrag);
+        } catch (err) {
+            console.error('Error removing listeners:', err);
+        }
     }
 }
 
