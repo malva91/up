@@ -40,11 +40,41 @@ class SyncGallery {
     async init() {
         this.setupElements();
         this.setupEventListeners();
+        this.setupVisibilityListener();
 
         // Initialize Firebase and setup real-time listeners
         await this.initializeFirebase();
 
         this.updateStatus('Inizializzazione completata', 'success');
+    }
+
+    setupVisibilityListener() {
+        document.addEventListener('visibilitychange', async () => {
+            if (!document.hidden && this.isInitialized) {
+                console.log('🔄 Page visible again - resyncing...');
+                await this.resyncOnVisibilityChange();
+            }
+        });
+
+        window.addEventListener('focus', async () => {
+            if (this.isInitialized) {
+                console.log('🔄 Window focused - resyncing...');
+                await this.resyncOnVisibilityChange();
+            }
+        });
+    }
+
+    async resyncOnVisibilityChange() {
+        try {
+            const snapshot = await get(stateRef);
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                console.log('🔥 Resynced state:', data);
+                this.handleStateUpdate(data);
+            }
+        } catch (error) {
+            console.error('Resync error:', error);
+        }
     }
 
     async initializeFirebase() {
