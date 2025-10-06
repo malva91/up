@@ -82,19 +82,49 @@ class SyncGallery {
             // Initialize default state
             await initializeDefaultState();
 
-            // Setup real-time listeners
-            this.setupStateListener();
+            // Load saved state from Firebase BEFORE setting up listener
+            await this.loadSavedState();
 
             // Load initial data
             await this.loadImages();
 
-            this.updateSyncStatus('success');
+            // Mark as initialized
             this.isInitialized = true;
+
+            // Setup real-time listeners (after initialization)
+            this.setupStateListener();
+
+            this.updateSyncStatus('success');
 
         } catch (error) {
             console.error('Firebase initialization error:', error);
             this.updateStatus('Errore connessione Firebase', 'error');
             this.updateSyncStatus('error');
+        }
+    }
+
+    async loadSavedState() {
+        try {
+            const snapshot = await get(stateRef);
+            if (snapshot.exists()) {
+                const savedState = snapshot.val();
+                console.log('📥 Loading saved state:', savedState);
+
+                this.currentState = {
+                    selectedImage: String(savedState.selectedImage || ''),
+                    zoom: Math.max(0.1, Math.min(5, Number(savedState.zoom) || 1)),
+                    pan: {
+                        x: Number(savedState.pan?.x) || 0,
+                        y: Number(savedState.pan?.y) || 0
+                    },
+                    backgroundColor: String(savedState.backgroundColor || '#0000ff')
+                };
+
+                this.updateView();
+                console.log('✅ Saved state restored');
+            }
+        } catch (error) {
+            console.error('Error loading saved state:', error);
         }
     }
 
