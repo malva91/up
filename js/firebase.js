@@ -4,6 +4,24 @@
 // Image upload/management is handled by PHP backend.
 // ------------------------------------------------------------
 
+function parseJsonSafely(text) {
+  // Try normal parse first
+  try {
+    return JSON.parse(text);
+  } catch (e) {}
+  // Attempt to recover by slicing between first '{' and last '}'
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start !== -1 && end !== -1 && end > start) {
+    const maybeJson = text.slice(start, end + 1);
+    try {
+      return JSON.parse(maybeJson);
+    } catch (e) {}
+  }
+  console.error('API non ha restituito JSON puro. Anteprima:', (text || '').slice(0, 160));
+  throw new Error("Risposta non-JSON dall'API");
+}
+
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import {
   getDatabase,
@@ -32,12 +50,18 @@ const firebaseConfig = {
 };
 
 // ------------------------------------------------------------
+// API base for backend PHP. Allows override via global variable.
+// ------------------------------------------------------------
+const API_BASE = (typeof window !== 'undefined' && window.API_BASE) || './api';
+
+// ------------------------------------------------------------
 // Initialisation
 // ------------------------------------------------------------
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 
-goOnline(database); // explicit network enable
+// Explicitly enable network for Realtime Database
+goOnline(database);
 console.info('🔥 Firebase initialised');
 
 // ------------------------------------------------------------
@@ -104,7 +128,7 @@ async function uploadImages(files) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
 
-    const response = await fetch('./api/upload.php', {
+    const response = await fetch(`${API_BASE}/upload.php`, {
       method: 'POST',
       body: formData,
       signal: controller.signal
@@ -112,11 +136,12 @@ async function uploadImages(files) {
 
     clearTimeout(timeout);
     
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
+    const text = await response.text();
+    const result = parseJsonSafely(text);
     
-    const result = await response.json();
+    if (!response.ok || !result || result.success === false) {
+      throw new Error(result?.error || `HTTP ${response.status}`);
+    }
     return result;
   } catch (err) {
     console.error('Error uploading images:', err);
@@ -129,26 +154,30 @@ async function uploadImages(files) {
  */
 async function fetchImages() {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(`${API_BASE}/images.php`, { method: 'GET' });
+    const text = await response.text();
+    const data = parseJsonSafely(text);
 
-    const response = await fetch('./api/images.php', {
-      signal: controller.signal
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    if (!response.ok || (data && data.success === false)) {
+      return { success: false, error: data?.error || `HTTP ${response.status}` };
     }
 
-    const result = await response.json();
-
-    if (!result || typeof result !== 'object') {
-      throw new Error('Invalid response');
+    let imagesList = [];
+    // data.images from our PHP API, or if an array is returned directly
+    if (Array.isArray(data?.images)) {
+      imagesList = data.images;
+    } else if (Array.isArray(data)) {
+      imagesList = data;
     }
 
-    return result;
+    // Normalize to {id, name, url}
+    const normalized = imagesList.map(img => ({
+      id: (img.id !== undefined && img.id !== null) ? String(img.id) : (img.name || img.filename || ''),
+      name: img.original_name || img.name || img.filename || '',
+      url: img.filepath || img.url || ''
+    }));
+
+    return { success: true, images: normalized };
   } catch (err) {
     if (err.name === 'AbortError') {
       return { success: false, error: 'Timeout' };
@@ -162,32 +191,26 @@ async function fetchImages() {
  * Delete an image from PHP backend
  * @param {string} imageId Image ID to delete
  */
-async function deleteImage(imageId) {
+async function deleteImage(id) {
   try {
-    if (!imageId || isNaN(parseInt(imageId))) {
+    if (!id || typeof id !== 'string') {
       throw new Error('Invalid ID');
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-
-    const response = await fetch('./api/delete.php', {
+    const response = await fetch(`${API_BASE}/delete.php`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ id: parseInt(imageId) }),
-      signal: controller.signal
+      body: JSON.stringify({ id })
     });
+    const text = await response.text();
+    const data = parseJsonSafely(text);
 
-    clearTimeout(timeout);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || `HTTP ${response.status}`);
     }
-    
-    const result = await response.json();
-    return result;
+    return data;
   } catch (err) {
     console.error('Error deleting image:', err);
     return { success: false, error: err.message };

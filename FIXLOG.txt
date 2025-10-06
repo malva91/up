@@ -1,0 +1,5 @@
+Fix log generated on 2025-10-01T13:14:59.824833
+
+- api/config.php: Updated CORS headers and OPTIONS handler
+- uploads/.htaccess: Added hardening .htaccess
+- api/upload.php: Ensured uploads dir + post-move image validation

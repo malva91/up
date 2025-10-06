@@ -1,157 +1,138 @@
 <?php
-error_reporting(0);
-ini_set('display_errors', 0);
+// config.php - Configuration and security headers
 
+// Prevent direct access
+if (!defined('API_ACCESS')) {
+    define('API_ACCESS', true);
+}
+
+// Error reporting (disable in production)
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+ini_set('log_errors', '1');
+ini_set('error_log', dirname(__DIR__) . '/logs/php_errors.log');
+
+// Create logs directory if not exists
+$logsDir = dirname(__DIR__) . '/logs';
+if (!is_dir($logsDir)) {
+    @mkdir($logsDir, 0755, true);
+}
+
+// Security headers
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, X-Requested-With');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 header('X-XSS-Protection: 1; mode=block');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+
+// CORS headers - IMPORTANTE: In produzione, specifica il dominio esatto
+$allowedOrigins = [
+    'http://localhost',
+    'http://localhost:3000',
+    'http://localhost:8000',
+    'http://127.0.0.1',
+    // Aggiungi qui il tuo dominio di produzione
+];
+
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (in_array($origin, $allowedOrigins)) {
+    header('Access-Control-Allow-Origin: ' . $origin);
+} else {
+    // In sviluppo locale senza origine specifica
+    header('Access-Control-Allow-Origin: *');
+}
+
+header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Max-Age: 86400');
+header('Access-Control-Allow-Credentials: true');
 
 // Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
-    exit();
+    exit;
 }
 
-// Database configuration
-define('DB_PATH', __DIR__ . '/gallery.db');
-define('UPLOAD_DIR', realpath(__DIR__ . '/../uploads/') . '/');
-define('MAX_FILE_SIZE', 15 * 1024 * 1024);
-define('ALLOWED_TYPES', ['image/jpeg', 'image/jpg', 'image/png', 'image/gif']);
-define('ALLOWED_EXTENSIONS', ['jpg', 'jpeg', 'png', 'gif']);
-
-// Create uploads directory if it doesn't exist
-if (!file_exists(UPLOAD_DIR)) {
-    mkdir(UPLOAD_DIR, 0755, true);
+// Upload directory
+if (!defined('UPLOAD_DIR')) {
+    define('UPLOAD_DIR', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR);
 }
 
-// Initialize SQLite database
-function initDatabase() {
-    try {
-        $pdo = new PDO('sqlite:' . DB_PATH);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        
-        // Create images table if it doesn't exist
-        $pdo->exec("
-            CREATE TABLE IF NOT EXISTS images (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                filename TEXT NOT NULL,
-                original_name TEXT NOT NULL,
-                filepath TEXT NOT NULL,
-                file_size INTEGER NOT NULL,
-                mime_type TEXT NOT NULL,
-                upload_time INTEGER NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        ");
-        
-        return $pdo;
-    } catch (PDOException $e) {
-        error_log("Database error: " . $e->getMessage());
-        return null;
+// Create upload directory if not exists
+if (!is_dir(UPLOAD_DIR)) {
+    if (!@mkdir(UPLOAD_DIR, 0755, true)) {
+        error_log("Failed to create upload directory: " . UPLOAD_DIR);
     }
 }
 
-// Get database connection
-function getDatabase() {
-    static $pdo = null;
-    if ($pdo === null) {
-        $pdo = initDatabase();
-    }
-    return $pdo;
+// Create .htaccess in upload directory for security
+$htaccessPath = UPLOAD_DIR . '.htaccess';
+if (!file_exists($htaccessPath)) {
+    $htaccessContent = <<<HTACCESS
+# Prevent PHP execution in upload directory
+<FilesMatch "\.(php|php3|php4|php5|phtml|pl|py|jsp|asp|sh|cgi)$">
+    Deny from all
+</FilesMatch>
+
+# Allow only images
+<FilesMatch "\.(jpg|jpeg|png|gif)$">
+    Allow from all
+</FilesMatch>
+
+# Prevent directory listing
+Options -Indexes
+
+# Security headers
+Header set X-Content-Type-Options "nosniff"
+Header set Content-Security-Policy "default-src 'none'; img-src 'self'"
+HTACCESS;
+    @file_put_contents($htaccessPath, $htaccessContent);
 }
 
-// Validate uploaded file
-function validateFile($file) {
-    $errors = [];
+// Include helper functions
+require_once __DIR__ . '/helpers.php';
 
-    if (!isset($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
-        $errors[] = 'File non valido';
-        return $errors;
+// Rate limiting (simple implementation)
+function checkRateLimit($identifier, $maxRequests = 100, $timeWindow = 3600) {
+    $cacheFile = sys_get_temp_dir() . '/rate_limit_' . md5($identifier) . '.json';
+    
+    $now = time();
+    $data = [];
+    
+    if (file_exists($cacheFile)) {
+        $content = file_get_contents($cacheFile);
+        $data = json_decode($content, true) ?: [];
     }
-
-    if ($file['error'] !== UPLOAD_ERR_OK) {
-        $errors[] = 'Errore durante il caricamento';
-        return $errors;
+    
+    // Clean old entries
+    $data = array_filter($data, function($timestamp) use ($now, $timeWindow) {
+        return ($now - $timestamp) < $timeWindow;
+    });
+    
+    // Check limit
+    if (count($data) >= $maxRequests) {
+        logSecurityEvent('rate_limit_exceeded', ['identifier' => $identifier]);
+        http_response_code(429);
+        echo json_encode(['success' => false, 'error' => 'Troppe richieste']);
+        exit;
     }
-
-    if ($file['size'] <= 0 || $file['size'] > MAX_FILE_SIZE) {
-        $errors[] = 'Dimensione file non valida';
-        return $errors;
-    }
-
-    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    if (!in_array($extension, ALLOWED_EXTENSIONS)) {
-        $errors[] = 'Estensione non supportata';
-        return $errors;
-    }
-
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-    if (!$finfo) {
-        $errors[] = 'Impossibile verificare il file';
-        return $errors;
-    }
-
-    $mimeType = finfo_file($finfo, $file['tmp_name']);
-    finfo_close($finfo);
-
-    if (!in_array($mimeType, ALLOWED_TYPES)) {
-        $errors[] = 'Tipo file non supportato';
-        return $errors;
-    }
-
-    $imageInfo = @getimagesize($file['tmp_name']);
-    if ($imageInfo === false) {
-        $errors[] = 'File non è un\'immagine valida';
-        return $errors;
-    }
-
-    if ($imageInfo[0] > 10000 || $imageInfo[1] > 10000) {
-        $errors[] = 'Dimensioni immagine eccessive';
-        return $errors;
-    }
-
-    return $errors;
+    
+    // Add current request
+    $data[] = $now;
+    file_put_contents($cacheFile, json_encode($data));
 }
 
-// Generate unique filename
-function generateFilename($originalName) {
-    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-    if (!in_array($extension, ALLOWED_EXTENSIONS)) {
-        $extension = 'jpg';
-    }
-    $timestamp = time();
-    $random = bin2hex(random_bytes(16));
-    return $timestamp . '_' . $random . '.' . $extension;
+// Get client identifier for rate limiting
+function getClientIdentifier() {
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    return md5($ip . $userAgent);
 }
 
-function sanitizeImageId($id) {
-    $id = filter_var($id, FILTER_VALIDATE_INT);
-    if ($id === false || $id <= 0) {
-        throw new Exception('ID non valido');
-    }
-    return $id;
+// Apply rate limiting
+checkRateLimit(getClientIdentifier());
+
+// Clean old files daily (run randomly 1% of the time)
+if (rand(1, 100) === 1) {
+    cleanOldFiles(30 * 86400); // 30 days
 }
-
-function validateFilePath($filepath) {
-    $realUploadDir = realpath(UPLOAD_DIR);
-    $realFilePath = realpath(dirname(UPLOAD_DIR . $filepath)) . '/' . basename($filepath);
-
-    if (strpos($realFilePath, $realUploadDir) !== 0) {
-        throw new Exception('Percorso non valido');
-    }
-
-    return basename($filepath);
-}
-
-// Get base URL for file access
-function getBaseUrl() {
-    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'];
-    $path = dirname(dirname($_SERVER['REQUEST_URI'])); // Go up one level from /api/
-    return $protocol . '://' . $host . $path;
-}
-?>
